@@ -36,7 +36,6 @@ executable swagger-gen
   main-is:             Main.hs
   ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N
   build-depends:       base
-                     , aeson
                      , bytestring
                      , swagger-gen
                      , case-insensitive

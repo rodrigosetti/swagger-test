@@ -8,6 +8,7 @@ import           Data.Aeson
 import qualified Data.ByteString            as BS
 import qualified Data.ByteString.Char8      as C
 import qualified Data.HashMap.Strict.InsOrd as M
+import           Data.List                  (partition)
 import           Data.Maybe
 import           Data.Swagger
 import           Network.HTTP.Types
@@ -21,7 +22,7 @@ data JsonHTTPRequest = JsonHTTPRequest { requestHost    :: Maybe FullyQualifiedH
                                        , requestMethod  :: Method
                                        , requestPath    :: String
                                        , requestHeaders :: RequestHeaders
-                                       , requestBody    :: Maybe Value }
+                                       , requestBody    :: Maybe BS.ByteString }
                                   deriving (Show, Eq)
 
 -- |Given a swagger.json (encoded as a bytestring), decode it, and produce a
@@ -37,12 +38,40 @@ generateRequest = generate . requestGenerator
 
 -- Random Request generator
 requestGenerator :: Swagger -> Gen JsonHTTPRequest
-requestGenerator s = do (path, item) <- elements $ M.toList $ s ^. paths
-                        let baseP = fromMaybe "/" $ s ^. basePath
+requestGenerator s = do let baseP = fromMaybe "/" $ s ^. basePath
                         let mHost = s ^. host
+                        -- pick a path
+                        (path, item) <- elements $ M.toList $ s ^. paths
+                        -- select one operation of the selected path
+                        (method, operation) <- elements $ catMaybes [ (methodGet,) <$> item ^. get
+                                                                    , (methodPut,) <$> item ^. put
+                                                                    , (methodPost,) <$> item ^. post
+                                                                    , (methodDelete,) <$> item ^. delete
+                                                                    , (methodOptions,) <$> item ^. options
+                                                                    , (methodHead,) <$> item ^. head_
+                                                                    , (methodPatch,) <$> item ^. patch ]
+
+                        let resolveRefParam :: Referenced Param -> Maybe Param
+                            resolveRefParam (Inline p) = Just p
+                            resolveRefParam (Ref r)    = M.lookup (getReference r) $ s ^. parameters
+
+                        -- combine parameters common to all operations to parameters
+                        -- specific to the selected operation
+                        let params = catMaybes $ resolveRefParam <$> (item ^. parameters) ++ (operation ^. parameters)
+
+                        -- partition between required and non-required parameters
+                        let (requiredParams, notRequiredParams) = partition paramIsRequired params
+
+                        selectedOptionalParams <- sublistOf notRequiredParams
+
+                        let finalParams = requiredParams ++ selectedOptionalParams
+
+                        -- apply finalParams
+                        -- TODO
+
                         scheme <- elements $ fromMaybe [Https] $ s ^. schemes
                         pure $ JsonHTTPRequest (buildHost scheme <$> mHost)
-                                                "POST"
+                                                method
                                                 (joinPath [baseP, path])
                                                 (catMaybes [(("Host",) . C.pack . (^. name)) <$> mHost])
                                                 Nothing
@@ -55,3 +84,7 @@ requestGenerator s = do (path, item) <- elements $ M.toList $ s ^. paths
       schemeToHttpPrefix Https = "https://"
       schemeToHttpPrefix Ws    = "ws://"
       schemeToHttpPrefix Wss   = "wss://"
+
+paramIsRequired :: Param -> Bool
+paramIsRequired Param { _paramSchema = ParamOther (ParamOtherSchema { _paramOtherSchemaIn = ParamPath})} = True
+paramIsRequired p = fromMaybe False $ p ^. required
