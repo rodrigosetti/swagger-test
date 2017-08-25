@@ -1,0 +1,47 @@
+name:                swagger-gen
+version:             0.1.0.0
+synopsis:            Testing of Swagger APIs
+description:         This package provides a library and executable tool
+                     that supports testing APIs specified with Swagger. It
+                     allows one to generate arbitrary Swagger requests for any
+                     given specification.
+homepage:            https://github.com/rodrigosetti/swagger-gen#readme
+license:             BSD3
+license-file:        LICENSE
+author:              Rodrigo Setti
+maintainer:          rodrigosetti@gmail.com
+copyright:           2017 Yahoo inc. All rights reserved
+category:            Testing
+build-type:          Simple
+extra-source-files:  README.md
+cabal-version:       >=1.10
+
+library
+  hs-source-dirs:      src
+  ghc-options:         -Wall
+  exposed-modules:     Test.Swagger.Gen
+  build-depends:       base >= 4.7 && < 5
+                     , swagger2
+                     , http-types
+                     , lens
+                     , insert-ordered-containers
+                     , bytestring
+                     , aeson
+                     , filepath
+                     , QuickCheck == 2.10.*
+  default-language:    Haskell2010
+
+executable swagger-gen
+  hs-source-dirs:      app
+  main-is:             Main.hs
+  ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N
+  build-depends:       base
+                     , aeson
+                     , bytestring
+                     , swagger-gen
+                     , case-insensitive
+  default-language:    Haskell2010
+
+source-repository head
+  type:     git
+  location: https://github.com/rodrigosetti/swagger-gen
