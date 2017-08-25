@@ -10,6 +10,7 @@ import qualified Data.ByteString.Char8      as C
 import qualified Data.HashMap.Strict.InsOrd as M
 import           Data.List                  (partition)
 import           Data.Maybe
+import           Data.Monoid                ((<>))
 import           Data.Swagger
 import           Network.HTTP.Types
 import           System.FilePath.Posix      (joinPath)
@@ -30,7 +31,7 @@ data JsonHTTPRequest = JsonHTTPRequest { requestHost    :: Maybe FullyQualifiedH
 --  The return type is Either a parsing error (described as String), or a
 --  random Request (in the IO monad because it's random).
 generateRequestFromJsonDefinition :: BS.ByteString -> Either String (IO JsonHTTPRequest)
-generateRequestFromJsonDefinition b = generateRequest <$> eitherDecodeStrict b
+generateRequestFromJsonDefinition = fmap generateRequest . eitherDecodeStrict
 
 -- Generate a random request for a Swagger definition
 generateRequest :: Swagger -> IO JsonHTTPRequest
@@ -39,7 +40,7 @@ generateRequest = generate . requestGenerator
 -- Random Request generator
 requestGenerator :: Swagger -> Gen JsonHTTPRequest
 requestGenerator s = do let baseP = fromMaybe "/" $ s ^. basePath
-                        let mHost = s ^. host
+                            mHost = s ^. host
                         -- pick a path
                         (path, item) <- elements $ M.toList $ s ^. paths
                         -- select one operation of the selected path
@@ -57,14 +58,13 @@ requestGenerator s = do let baseP = fromMaybe "/" $ s ^. basePath
 
                         -- combine parameters common to all operations to parameters
                         -- specific to the selected operation
-                        let params = catMaybes $ resolveRefParam <$> (item ^. parameters) ++ (operation ^. parameters)
-
-                        -- partition between required and non-required parameters
-                        let (requiredParams, notRequiredParams) = partition paramIsRequired params
+                        let params = catMaybes $ resolveRefParam <$> (item ^. parameters) <> (operation ^. parameters)
+                            -- partition between required and non-required parameters
+                            (requiredParams, notRequiredParams) = partition paramIsRequired params
 
                         selectedOptionalParams <- sublistOf notRequiredParams
 
-                        let finalParams = requiredParams ++ selectedOptionalParams
+                        let finalParams = requiredParams <> selectedOptionalParams
 
                         -- apply finalParams
                         -- TODO
@@ -78,7 +78,7 @@ requestGenerator s = do let baseP = fromMaybe "/" $ s ^. basePath
 
     where
       buildHost :: Scheme -> Host -> String
-      buildHost sc h = schemeToHttpPrefix sc ++ (h ^. name) ++ maybe "" ((':':) . show) (h ^. port)
+      buildHost sc h = schemeToHttpPrefix sc <> (h ^. name) <> maybe "" ((':':) . show) (h ^. port)
 
       schemeToHttpPrefix Http  = "http://"
       schemeToHttpPrefix Https = "https://"
@@ -86,5 +86,5 @@ requestGenerator s = do let baseP = fromMaybe "/" $ s ^. basePath
       schemeToHttpPrefix Wss   = "wss://"
 
 paramIsRequired :: Param -> Bool
-paramIsRequired Param { _paramSchema = ParamOther (ParamOtherSchema { _paramOtherSchemaIn = ParamPath})} = True
+paramIsRequired Param { _paramSchema = ParamOther ParamOtherSchema { _paramOtherSchemaIn = ParamPath}} = True
 paramIsRequired p = fromMaybe False $ p ^. required

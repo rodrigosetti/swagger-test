@@ -10,10 +10,7 @@ import           Test.Swagger.Gen
 
 main :: IO ()
 main = do contents <- BS.readFile "swagger.json"
-          case generateRequestFromJsonDefinition contents of
-            Left e  -> die e
-            Right r -> printRequest =<< r
-
+          either die (>>= printRequest) $ generateRequestFromJsonDefinition contents
 
 printRequest :: JsonHTTPRequest -> IO ()
 printRequest (JsonHTTPRequest host method path headers body) =
