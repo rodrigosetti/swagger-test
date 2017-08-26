@@ -21,6 +21,8 @@ library
   ghc-options:         -Wall
   exposed-modules:     Test.Swagger.Gen
   build-depends:       base >= 4.7 && < 5
+                     , binary
+                     , case-insensitive
                      , swagger2
                      , http-types
                      , lens
@@ -29,6 +31,7 @@ library
                      , aeson
                      , filepath
                      , QuickCheck == 2.10.*
+                     , text
   default-language:    Haskell2010
 
 executable swagger-gen
