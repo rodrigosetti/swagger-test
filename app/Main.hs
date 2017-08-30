@@ -7,6 +7,7 @@ import qualified Data.ByteString.Lazy as LBS
 import           Data.CaseInsensitive (original)
 import           Data.Maybe           (fromMaybe)
 import           Data.Semigroup       ((<>))
+import qualified Data.Text            as T
 import           Data.Text.Encoding
 import qualified Data.Text.IO         as TIO
 import           Network.HTTP.Types
@@ -18,9 +19,6 @@ import           Test.Swagger.Gen
 -- |Program options
 data Opts = Opts Command
                  (Maybe FilePath) -- ^Swagger input file or stdin
-
-type Seed = Int
-type OperationId = String
 
 data Command = Generate (Maybe Seed) (Maybe OperationId)
              | Validate Bool -- ^include headers
@@ -47,10 +45,10 @@ opts  = Opts <$> subparser ( command "generate" (info (generate <**> helper) (pr
                         <*> operationId
 
     operationId :: Parser OperationId
-    operationId = strOption (long "operation"
-                           <> short 'o'
-                           <> metavar "ID"
-                           <> help "specify a operation id to test (default pick randomly)")
+    operationId = T.pack <$> strOption (long "operation"
+                                       <> short 'o'
+                                       <> metavar "ID"
+                                       <> help "specify a operation id to test (default pick randomly)")
 
 main :: IO ()
 main = do Opts cmd inputFile <- execParser optsInfo
@@ -59,9 +57,9 @@ main = do Opts cmd inputFile <- execParser optsInfo
             Left e -> die e
             Right schema ->
               case cmd of
-                Generate mseed _ ->
+                Generate mseed mopid ->
                     do seed <- maybe getAndReportNewSeed pure mseed
-                       printRequest $ generateRequest seed schema
+                       printRequest $ generateRequest seed schema mopid
                 Validate _ _ -> error "not implemented"
   where
     optsInfo = info (opts <**> helper)

@@ -5,6 +5,8 @@
 {-# LANGUAGE TypeFamilies      #-}
 module Test.Swagger.Gen ( HTTPRequest(..)
                         , Headers
+                        , Seed
+                        , OperationId
                         , generateRequest) where
 
 import           Control.Applicative        ((<|>))
@@ -35,6 +37,9 @@ import           Test.QuickCheck.Random
 -- |The FullyQualifiedHost contains the scheme (i.e. http://), hostname and port.
 type FullyQualifiedHost = String
 
+type Seed = Int
+type OperationId = T.Text
+
 type Headers = [(CI T.Text, T.Text)]
 
 data HTTPRequest = HTTPRequest { requestOperationId :: Maybe String
@@ -48,10 +53,10 @@ data HTTPRequest = HTTPRequest { requestOperationId :: Maybe String
 
 -- |Given a swagger.json schema, produce a Request that complies with the schema.
 --  The return type is a random Request (in the IO monad because it's random).
-generateRequest :: Int -> Swagger -> HTTPRequest
-generateRequest seed s =
+generateRequest :: Seed -> Swagger -> Maybe OperationId -> HTTPRequest
+generateRequest seed s mopid =
   let gen = mkQCGen seed
-   in unGen (requestGenerator s) gen 30
+   in unGen (requestGenerator s mopid) gen 30
 
 -- |Replace all references with inlines
 resolveReferences :: Swagger -> Swagger
@@ -71,22 +76,41 @@ refToMaybe (Inline i) = Just i
 refToMaybe (Ref _)    = Nothing
 
 -- Random Request generator
-requestGenerator :: Swagger -> Gen HTTPRequest
-requestGenerator s' =
+requestGenerator :: Swagger -> Maybe OperationId -> Gen HTTPRequest
+requestGenerator s' mopid =
  do let s = resolveReferences s'
         baseP = fromMaybe "/" $ s ^. basePath
         mHost = s ^. host
-    -- pick a path
-    (path, item) <- elements $ M.toList $ s ^. paths
-    -- select one operation of the selected path
-    (method, operation) <- elements $ catMaybes [ (methodGet,) <$> item ^. get
-                                                , (methodPut,) <$> item ^. put
-                                                , (methodPost,) <$> item ^. post
-                                                , (methodDelete,) <$> item ^. delete
-                                                , (methodOptions,) <$> item ^. options
-                                                , (methodHead,) <$> item ^. head_
-                                                , (methodPatch,) <$> item ^. patch ]
 
+    -- compute all available operations, in a 4-tuple
+    let availableOps :: [(FilePath, PathItem, Method, Operation)]
+        availableOps = catMaybes $ mconcat $
+          (\i -> let (path, item) = i
+                 in [  (path, item, methodGet,) <$> item ^. get
+                     , (path, item, methodPut,) <$> item ^. put
+                     , (path, item, methodPost,) <$> item ^. post
+                     , (path, item, methodDelete,) <$> item ^. delete
+                     , (path, item, methodOptions,) <$> item ^. options
+                     , (path, item, methodHead,) <$> item ^. head_
+                     , (path, item, methodPatch,) <$> item ^. patch ])
+          <$> M.toList (s ^. paths)
+
+    -- select one operation of the selected path either randomly or lookup by
+    -- operation id if providede
+    (path, item, method, operation) <-
+      case mopid of
+        Nothing -> elements availableOps
+        Just opid ->
+          do let opId2Op = catMaybes
+                         $ (\i -> let (_, _, _, o) = i in (,i) <$> o ^. operationId)
+                         <$> availableOps
+                 found = lookup opid opId2Op
+                 allIds = T.intercalate ", " $ fst <$> opId2Op
+             maybe (fail $ "undefined operation id: \""
+                         <> T.unpack opid
+                         <> "\". Available ids: "
+                         <> T.unpack allIds)
+                    pure found
 
     -- combine parameters common to all operations to parameters
     -- specific to the selected operation
