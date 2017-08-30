@@ -29,6 +29,8 @@ import qualified Data.Vector                as V
 import           Network.HTTP.Types
 import           System.FilePath.Posix      (joinPath)
 import           Test.QuickCheck            hiding (Fixed)
+import           Test.QuickCheck.Gen        (unGen)
+import           Test.QuickCheck.Random
 
 -- |The FullyQualifiedHost contains the scheme (i.e. http://), hostname and port.
 type FullyQualifiedHost = String
@@ -46,8 +48,10 @@ data HTTPRequest = HTTPRequest { requestOperationId :: Maybe String
 
 -- |Given a swagger.json schema, produce a Request that complies with the schema.
 --  The return type is a random Request (in the IO monad because it's random).
-generateRequest :: Swagger -> IO HTTPRequest
-generateRequest = generate . requestGenerator
+generateRequest :: Int -> Swagger -> HTTPRequest
+generateRequest seed s =
+  let gen = mkQCGen seed
+   in unGen (requestGenerator s) gen 30
 
 -- |Replace all references with inlines
 resolveReferences :: Swagger -> Swagger

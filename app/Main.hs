@@ -12,13 +12,14 @@ import qualified Data.Text.IO         as TIO
 import           Network.HTTP.Types
 import           Options.Applicative
 import           System.Exit          (die)
+import           System.Random
 import           Test.Swagger.Gen
 
 -- |Program options
 data Opts = Opts Command
                  (Maybe FilePath) -- ^Swagger input file or stdin
 
-type Seed = Integer
+type Seed = Int
 type OperationId = String
 
 data Command = Generate (Maybe Seed) (Maybe OperationId)
@@ -58,13 +59,20 @@ main = do Opts cmd inputFile <- execParser optsInfo
             Left e -> die e
             Right schema ->
               case cmd of
-                Generate _ _ -> printRequest =<< generateRequest schema
+                Generate mseed _ ->
+                    do seed <- maybe getAndReportNewSeed pure mseed
+                       printRequest $ generateRequest seed schema
                 Validate _ _ -> error "not implemented"
   where
     optsInfo = info (opts <**> helper)
                     (fullDesc
                     <> progDesc "Generate Swagger requests and validates responses"
                     <> header "Testing tool for Swagger APIs")
+
+    getAndReportNewSeed = do seed <- randomIO
+                             putStr "// using seed: "
+                             print seed
+                             pure seed
 
 printRequest :: HTTPRequest -> IO ()
 printRequest (HTTPRequest opId host method path query headers body) =
