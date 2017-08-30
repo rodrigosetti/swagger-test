@@ -60,7 +60,7 @@ generateRequest seed s mopid =
 
 -- |Replace all references with inlines
 resolveReferences :: Swagger -> Swagger
-resolveReferences s = everywhere (mkT resolveSchema) $ everywhere (mkT resolveParam) s
+resolveReferences s = everywhere' (mkT resolveSchema) $ everywhere' (mkT resolveParam) s
   where
     resolveParam :: Referenced Param -> Referenced Param
     resolveParam i@Inline {} = i
