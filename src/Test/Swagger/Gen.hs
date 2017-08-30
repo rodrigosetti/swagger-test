@@ -1,10 +1,11 @@
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes        #-}
 {-# LANGUAGE TupleSections     #-}
-{-# LANGUAGE TypeFamilies     #-}
-{-# LANGUAGE RankNTypes     #-}
+{-# LANGUAGE TypeFamilies      #-}
 module Test.Swagger.Gen ( HTTPRequest(..)
-                        , generateRequestFromJsonDefinition) where
+                        , Headers
+                        , generateRequest) where
 
 import           Control.Applicative        ((<|>))
 import           Control.Arrow              ((&&&))
@@ -12,10 +13,10 @@ import           Control.Lens               hiding (elements)
 import           Control.Monad
 import           Data.Aeson
 import           Data.Binary.Builder
-import qualified Data.ByteString            as BS
-import qualified Data.ByteString.Char8      as C
 import qualified Data.ByteString.Lazy       as LBS
-import           Data.CaseInsensitive       (mk)
+import           Data.CaseInsensitive
+import           Data.Generics
+import qualified Data.HashMap.Lazy          as HM
 import qualified Data.HashMap.Strict.InsOrd as M
 import           Data.List                  (partition)
 import           Data.Maybe
@@ -24,35 +25,27 @@ import           Data.Scientific
 import           Data.Swagger
 import           Data.Swagger.Internal      (SwaggerKind (..))
 import qualified Data.Text                  as T
-import           Data.Text.Encoding         (encodeUtf8)
+import qualified Data.Vector                as V
 import           Network.HTTP.Types
-import           Network.HTTP.Types.Header
-import           Network.HTTP.Types.URI
 import           System.FilePath.Posix      (joinPath)
-import           Test.QuickCheck
-import           Data.Generics
-import qualified Data.HashMap.Lazy  as HM
-import qualified Data.Vector as V
+import           Test.QuickCheck            hiding (Fixed)
 
 -- |The FullyQualifiedHost contains the scheme (i.e. http://), hostname and port.
 type FullyQualifiedHost = String
 
+type Headers = [(CI T.Text, T.Text)]
+
 data HTTPRequest = HTTPRequest { requestOperationId :: Maybe String
                                , requestHost        :: Maybe FullyQualifiedHost
                                , requestMethod      :: Method
-                               , requestPath        :: BS.ByteString
-                               , requestHeaders     :: RequestHeaders
+                               , requestPath        :: T.Text
+                               , requestQuery       :: QueryText
+                               , requestHeaders     :: Headers
                                , requestBody        :: Maybe LBS.ByteString }
                                   deriving (Show, Eq)
 
--- |Given a swagger.json (encoded as a bytestring), decode it, and produce a
---  random Request that complies with the schema.
---  The return type is Either a parsing error (described as String), or a
---  random Request (in the IO monad because it's random).
-generateRequestFromJsonDefinition :: BS.ByteString -> Either String (IO HTTPRequest)
-generateRequestFromJsonDefinition = fmap generateRequest . eitherDecodeStrict
-
--- Generate a random request for a Swagger definition
+-- |Given a swagger.json schema, produce a Request that complies with the schema.
+--  The return type is a random Request (in the IO monad because it's random).
 generateRequest :: Swagger -> IO HTTPRequest
 generateRequest = generate . requestGenerator
 
@@ -71,7 +64,7 @@ resolveReferences s = everywhere (mkT resolveSchema) $ everywhere (mkT resolvePa
 
 refToMaybe :: Referenced a -> Maybe a
 refToMaybe (Inline i) = Just i
-refToMaybe (Ref _) = Nothing
+refToMaybe (Ref _)    = Nothing
 
 -- Random Request generator
 requestGenerator :: Swagger -> Gen HTTPRequest
@@ -111,13 +104,10 @@ requestGenerator s' =
 
     queryStr <- genQuery queryParams
 
-    let pathAndQuery = C.pack (joinPath [baseP, T.unpack path'])
-                     <> renderQuery True queryStr
-
     -- pick params for header
     let headerParams = catMaybes (paramSchemaAndAllowEmpty ParamHeader <$> finalParams)
 
-    headers <- genQuery headerParams
+    randomHeaders <- genQuery headerParams
 
     -- pick params for form data
     let formDataParams = catMaybes $ paramSchemaAndAllowEmpty ParamFormData <$> finalParams
@@ -130,21 +120,22 @@ requestGenerator s' =
                pure $ (("application/json",) . encode) <$> randomJsonBody
        else do formDataQuery <- genQuery formDataParams
                pure $ Just ( "application/x-www-form-urlencoded"
-                           , toLazyByteString $ renderQueryBuilder False formDataQuery)
+                           , toLazyByteString $ renderQueryText False formDataQuery)
 
-    let headers' = catMaybes
+    let randomHeaders' = catMaybes
                  $   (\h -> (fst h,) <$> snd h)
-                 <$> ((mk . fst &&& snd) <$> headers)
-                 <>  [(hHost, (C.pack . (^. name)) <$> mHost)]
-                 <>  [(hContentType, fst <$> maybeMimeAndBody)]
+                 <$> ((mk . fst &&& snd) <$> randomHeaders)
+                 <>  [("Host", (T.pack . (^. name)) <$> mHost)]
+                 <>  [("Content-Type", fst <$> maybeMimeAndBody)]
 
     -- use scheme from operation, if defined, or from global
     scheme <- elements $ fromMaybe [Https] (operation ^. schemes <|> s ^. schemes)
     pure $ HTTPRequest (T.unpack <$> operation ^. operationId)
                        (buildHost scheme <$> mHost)
                        method
-                       pathAndQuery
-                       headers'
+                       (T.pack (joinPath [baseP, T.unpack path']))
+                       queryStr
+                       randomHeaders'
                        (snd <$> maybeMimeAndBody)
 
  where
@@ -160,25 +151,30 @@ requestGenerator s' =
   bodySchemaParam Param { _paramSchema = ParamBody r} = Just r
   bodySchemaParam _                                   = Nothing
 
-  applyPathTemplating :: [(T.Text, ParamSchema SwaggerKindParamOtherSchema, Bool)] -> T.Text -> Gen T.Text
+  applyPathTemplating :: [(T.Text, ParamSchema k, Bool)] -> T.Text -> Gen T.Text
   applyPathTemplating [] p                 = pure p
-  applyPathTemplating ((name, sc, ae):ts) p =
-    do v <- jsonToText CollectionSSV <$> paramGen sc ae
-       applyPathTemplating ts $ T.replace p ("{" <> name <> "}") v
+  applyPathTemplating ((key, sc, ae):ts) p =
+    do let f = sc ^. format
+       v <- (mconcat . jsonToText f CollectionSSV) <$> paramGen sc ae
+       applyPathTemplating ts $ T.replace ("{" <> key <> "}") v p
 
-  genQuery :: [(T.Text, ParamSchema SwaggerKindParamOtherSchema, Bool)] -> Gen Query
+  genQuery :: [(T.Text, ParamSchema k, Bool)] -> Gen QueryText
   genQuery []                  = pure []
-  genQuery ((name, sc, ae):ts) =
-    do v <- (\p -> if T.null p then Nothing else Just p) . jsonToText CollectionCSV <$> paramGen sc ae
-       ((encodeUtf8 name, encodeUtf8 <$> v):) <$> genQuery ts
+  genQuery ((key, sc, ae):ts) =
+    do let f = sc ^. format
+       v <- jsonToText f CollectionCSV <$> paramGen sc ae
+       let this = (\x -> (key, if T.null x then Nothing else Just x)) <$> v
+       rest <- genQuery ts
+       pure $ this <> rest
 
-  paramSchemaAndAllowEmpty :: ParamLocation -> Param -> Maybe (T.Text, ParamSchema SwaggerKindParamOtherSchema, Bool)
+  paramSchemaAndAllowEmpty :: ParamLocation -> Param -> Maybe (T.Text, ParamSchema 'SwaggerKindParamOtherSchema, Bool)
   paramSchemaAndAllowEmpty loc Param { _paramName = n, _paramSchema = ParamOther pos@ParamOtherSchema {} }
       | loc == pos ^. in_ = Just ( n
                                  , pos ^. paramSchema
                                  , (loc == ParamQuery || loc == ParamFormData)
                                    && fromMaybe False (pos ^. allowEmptyValue))
       | otherwise = Nothing
+  paramSchemaAndAllowEmpty _ Param { _paramSchema = ParamBody _ } = Nothing
 
 -- |Useful combinator for (Gen a) family: chose one of the values or
 -- Nothing if the list is empty. (i.e. safe "elements")
@@ -206,56 +202,82 @@ paramGen ps@ParamSchema { _paramSchemaType=SwaggerNumber } allowEmpty =
      frequency $ [(10, Number . fromFloatDigits <$> n)] <> [(1, pure Null) | allowEmpty]
 paramGen ps@ParamSchema { _paramSchemaType=SwaggerInteger } allowEmpty =
   do let n :: Gen Int
-         min_ = fromMaybe minBound $ toBoundedInteger =<< ps ^. minimum_
-         max_ = fromMaybe maxBound $ toBoundedInteger =<< ps ^. maximum_
+         min_ = fromMaybe (-1000) $ toBoundedInteger =<< ps ^. minimum_
+         max_ = fromMaybe 1000 $ toBoundedInteger =<< ps ^. maximum_
          n = choose ( min_ + if fromMaybe False $ ps ^. exclusiveMinimum then 1 else 0
                      , max_ - if fromMaybe False $ ps ^. exclusiveMaximum then 1 else 0)
      frequency $ [(10, Number . fromInteger . toInteger <$> n)] <> [(1, pure Null) | allowEmpty]
-paramGen ps@ParamSchema { _paramSchemaType=SwaggerBoolean } allowEmpty =
+paramGen ParamSchema { _paramSchemaType=SwaggerBoolean } allowEmpty =
   elements $ [Bool True, Bool False] <> [Null | allowEmpty]
 
 -- TODO: respect generation of "unique items"
-paramGen ps@ParamSchema { _paramSchemaType=SwaggerArray } allowEmpty =
+paramGen ps@ParamSchema { _paramSchemaType=SwaggerArray, _paramSchemaFormat=fmt } allowEmpty =
   do  siz <- toInteger <$> getSize
       len <- fromIntegral <$> choose ( fromMaybe (if allowEmpty then 0 else 1) $ ps ^. minLength
                                       , fromMaybe siz $ ps ^. maxLength)
       case ps ^. items of
-        Nothing ->
-          toJSON <$> replicateM len (genJString allowEmpty)
         Just (SwaggerItemsObject (Inline s)) ->
           toJSON <$> replicateM len (genJSON s)
         Just (SwaggerItemsArray rs) ->
           toJSON <$> mapM genJSON (catMaybes (refToMaybe <$> rs))
-        Just (SwaggerItemsPrimitive fmt ps') ->
+        Just (SwaggerItemsPrimitive cfmt ps') ->
            do x <- toJSON <$> replicateM len (paramGen ps' allowEmpty)
-              pure $ maybe x (toJSON . flip jsonToText x) fmt
+              pure $ maybe x (toJSON . flip (jsonToText fmt) x) cfmt
+        _ ->
+          toJSON <$> replicateM len (genJString allowEmpty)
 
 -- NOTE: we don't really support files
-paramGen ps@ParamSchema { _paramSchemaType=SwaggerFile } allowEmpty = genJString allowEmpty
-paramGen ps@ParamSchema { _paramSchemaType=s@SwaggerObject } allowEmpty = _
-paramGen    ParamSchema { _paramSchemaType=SwaggerNull } _ = pure Null
+paramGen ParamSchema { _paramSchemaType=SwaggerFile } allowEmpty = genJString allowEmpty
+paramGen ParamSchema { _paramSchemaType=SwaggerNull } _ = pure Null
 
-jsonToText :: CollectionFormat t -> Value -> T.Text
-jsonToText _ (String t) = t
-jsonToText _ Null = ""
-jsonToText _ (Bool True) = "true"
-jsonToText _ (Bool False) = "false"
-jsonToText _ (Number n) = T.pack $ show n
-jsonToText fmt (Object m) = T.intercalate (collectionSep fmt) $ (\i -> fst i <> "=" <> jsonToText fmt (snd i)) <$> HM.toList m
-jsonToText fmt (Array v) = T.intercalate (collectionSep fmt) $ jsonToText fmt <$> V.toList v
+-- TODO: what to do here?
+paramGen ParamSchema { _paramSchemaType=SwaggerObject } _ = undefined
 
-collectionSep :: CollectionFormat t -> T.Text
-collectionSep CollectionCSV   = ","
-collectionSep CollectionSSV   = ";"
-collectionSep CollectionTSV   = "\t"
-collectionSep CollectionPipes = "|"
-collectionSep CollectionMulti = "" -- NOTE: what is this?
+jsonToText :: Maybe Format -> CollectionFormat t -> Value -> [T.Text]
+jsonToText _ _ (String t) = [t]
+jsonToText _ _ Null = []
+jsonToText _ _ (Bool True) = ["true"]
+jsonToText _ _ (Bool False) = ["false"]
+jsonToText f _ (Number n) = [T.pack $ display n]
+  where
+    display = case f of
+                Just "double" -> formatScientific Fixed Nothing
+                Just "float"  -> formatScientific Fixed Nothing
+                _             -> formatScientific Fixed (Just 0)
+
+jsonToText fmt cfmt (Object m) =
+  let txts = concatMap (\i -> (\x -> fst i <> "=" <> x) <$> jsonToText fmt cfmt (snd i)) $ HM.toList m
+  in case cfmt of
+    CollectionCSV   -> [T.intercalate "," txts]
+    CollectionSSV   -> [T.intercalate " " txts]
+    CollectionTSV   -> [T.intercalate "\t" txts]
+    CollectionPipes -> [T.intercalate "|" txts]
+    CollectionMulti -> txts
+jsonToText fmt cfmt (Array v) =
+  let txts = concatMap (jsonToText fmt cfmt) $ V.toList v
+  in case cfmt of
+    CollectionCSV   -> [T.intercalate "," txts]
+    CollectionSSV   -> [T.intercalate " " txts]
+    CollectionTSV   -> [T.intercalate "\t" txts]
+    CollectionPipes -> [T.intercalate "|" txts]
+    CollectionMulti -> txts
+
+-- |Merge two Json values, if possible
+merge :: Value -> Value -> Value
+merge Null v                  = v
+merge v Null                  = v
+merge (Array v1) (Array v2)   = Array $ v1 <> v2
+merge (Object v1) (Object v2) = Object $ v1 <> v2
+merge v _                     = v
 
 -- |Generate a JSON from a schema
 genJSON :: Schema -> Gen Value
--- TODO: what is "all of" exactly?
-genJSON Schema { _schemaAllOf = Just ss } | not (null ss) = oneof $ genJSON <$> ss
-genJSON s =
+genJSON Schema { _schemaAllOf = Just ss } | not (null ss) =
+  do jsons <- shuffle =<< mapM genJSON ss
+     n <- choose (1, length jsons)
+     pure $ foldl1 merge $ take n jsons
+
+genJSON s@Schema { _schemaParamSchema = ParamSchema { _paramSchemaType = SwaggerObject } } =
   do let props = catMaybes $ (\i -> (fst i,) <$> refToMaybe (snd i)) <$> M.toList (s ^. properties)
          (reqProps, optProps) = partition (\i -> fst i `elem` s ^. required) props
      siz <- toInteger <$> getSize
@@ -273,6 +295,8 @@ genJSON s =
                     _ -> pure []
 
      pure $ Object $ HM.fromList $ reqPropsV <> optPropsV <> addPropsV
+
+genJSON Schema { _schemaParamSchema = ps } = paramGen ps True
 
 genNonemptyText :: Gen T.Text
 genNonemptyText = genText False
