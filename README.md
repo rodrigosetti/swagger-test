@@ -36,16 +36,19 @@ Available commands:
 
 ```
 Usage: swagger-test generate [--seed N] [-o|--operation ID]
-                             [--output-format http|curl] [-i|--info]
+                             [--output-format http|curl|none|json] [-i|--info]
+                             [--size N]
   Generate a request
 
 Available options:
   --seed N                 specify the seed for the random generator
   -o,--operation ID        specify a operation id to test (default pick
                            randomly)
-  --output-format http|curl
+  --output-format http|curl|none|json
                            output format of the HTTP request (default: http)
   -i,--info                render information about seed and operation id
+  --size N                 control the size of the generated
+                           request (default: 30)
   -h,--help                Show this help text
 ```
 

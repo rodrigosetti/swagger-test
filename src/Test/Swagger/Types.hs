@@ -1,8 +1,19 @@
-module Test.Swagger.Types where
+{-# LANGUAGE OverloadedStrings #-}
+module Test.Swagger.Types (FullyQualifiedHost
+                          , Seed
+                          , OperationId
+                          , HttpHeader
+                          , Headers
+                          , HttpRequest(..)
+                          , HttpResponse(..)) where
 
+import           Control.Arrow
+import           Data.Aeson
 import qualified Data.ByteString.Lazy as LBS
 import           Data.CaseInsensitive
+import qualified Data.HashMap.Lazy    as M
 import qualified Data.Text            as T
+import           Data.Text.Encoding
 import           Network.HTTP.Types
 
 -- |The FullyQualifiedHost contains the scheme (i.e. http://), hostname and port.
@@ -14,14 +25,23 @@ type OperationId = T.Text
 type HttpHeader = (CI T.Text, T.Text)
 type Headers = [HttpHeader]
 
-data HTTPRequest = HTTPRequest { requestOperationId :: Maybe OperationId
-                               , requestHost        :: Maybe FullyQualifiedHost
-                               , requestMethod      :: Method
-                               , requestPath        :: T.Text
-                               , requestQuery       :: QueryText
-                               , requestHeaders     :: Headers
-                               , requestBody        :: Maybe LBS.ByteString }
+data HttpRequest = HttpRequest { requestHost    :: Maybe FullyQualifiedHost
+                               , requestMethod  :: Method
+                               , requestPath    :: T.Text
+                               , requestQuery   :: QueryText
+                               , requestHeaders :: Headers
+                               , requestBody    :: Maybe LBS.ByteString }
                       deriving (Show)
+
+instance ToJSON HttpRequest where
+  toJSON r = object [ "host" .= toJSON (requestHost r)
+                    , "method" .= toJSON (decodeUtf8 $ requestMethod r)
+                    , "path" .= toJSON (requestPath r)
+                    , "query" .= toJSON (requestQuery r)
+                    , "headers" .= toJSON headersMap
+                    , "body" .= toJSON (decodeUtf8 . LBS.toStrict <$> requestBody r) ]
+    where
+      headersMap = M.fromList $ first original <$> requestHeaders r
 
 data HttpResponse = HTTPResponse { responseHttpVersion :: HttpVersion
                                  , responseStatus      :: Status

@@ -31,12 +31,14 @@ data Command = Generate (Maybe Seed)
              | Validate (Maybe FilePath) -- ^read http response from file or stdin
                         OperationId
 
-data OutputFormat = OutputHttp | OutputCurl
+data OutputFormat = OutputHttp | OutputCurl | OutputNone | OutputJSON
       deriving (Bounded, Enum)
 
 instance Show OutputFormat where
   show OutputHttp = "http"
   show OutputCurl = "curl"
+  show OutputNone = "none"
+  show OutputJSON = "json"
 
 opts :: Parser Opts
 opts  = Opts <$> strOption ( metavar "FILENAME"
@@ -93,8 +95,7 @@ main = do Opts swaggerFile cmd <- execParser optsInfo
               case cmd of
                 Generate mseed mopid ofmt renderInfo size ->
                     do seed <- maybe randomIO pure mseed
-                       let req = generateRequest seed size schema mopid
-                           opid = requestOperationId req
+                       let (opid, req) = generateRequest seed size schema mopid
                        when renderInfo $
                           TIO.putStrLn $ "# seed=" <> T.pack (show seed) <> maybe "" (\i -> " id=" <> i) opid
                        printRequest ofmt req
@@ -111,8 +112,10 @@ main = do Opts swaggerFile cmd <- execParser optsInfo
                     <> header "Testing tool for Swagger APIs")
 
 -- Given a request and output format, render it correctly
-printRequest :: OutputFormat -> HTTPRequest -> IO ()
-printRequest OutputHttp (HTTPRequest _ _ method path query headers body) =
+printRequest :: OutputFormat -> HttpRequest -> IO ()
+printRequest OutputJSON r = TIO.putStrLn $ decodeUtf8 $ LBS.toStrict $ encode r
+printRequest OutputNone _ = pure ()
+printRequest OutputHttp (HttpRequest _ method path query headers body) =
   do BS.putStr method
      putStr " "
      TIO.putStr path
@@ -122,7 +125,7 @@ printRequest OutputHttp (HTTPRequest _ _ method path query headers body) =
      case body of
        Just b  -> putStr "\n" >> TIO.putStrLn (decodeUtf8 $ LBS.toStrict b)
        Nothing -> pure ()
-printRequest OutputCurl (HTTPRequest _ host method path query headers body) =
+printRequest OutputCurl (HttpRequest host method path query headers body) =
   do putStr "curl -i"
      when (method /= methodGet)
       $ BS.putStr $ " -X " <> method
