@@ -122,11 +122,23 @@ printRequest OutputCurl (HTTPRequest _ host method path query headers body) =
       $ BS.putStr $ " -X " <> method
      putStr " '"
      let host' = fromMaybe "http://localhost" host
-     putStr host'
-     TIO.putStr path
-     TIO.putStr $ decodeUtf8 $ renderQuery True $ queryTextToQuery query
+     TIO.putStr $ escapeS host'
+     TIO.putStr $ escape path
+     TIO.putStr $ escapeBS $ renderQuery True $ queryTextToQuery query
      putChar '\''
-     forM_ headers $ \(k,v) -> TIO.putStr (" -H '" <> original k) >> putStr ":" >> TIO.putStr (v <> "'")
+     forM_ headers $ \(k,v) -> TIO.putStr (" -H '" <> escape (original k)) >> putStr ": " >> TIO.putStr (escape v <> "'")
      case body of
-       Just b  -> TIO.putStrLn $ " -d '" <> decodeUtf8 (LBS.toStrict b) <> "'"
+       Just b  -> TIO.putStrLn $ " -d '" <> escapeLBS b <> "'"
        Nothing -> putChar '\n'
+   where
+     escapeLBS :: LBS.ByteString -> T.Text
+     escapeLBS = escapeBS . LBS.toStrict
+
+     escapeBS :: BS.ByteString -> T.Text
+     escapeBS = escape . decodeUtf8
+
+     escape :: T.Text -> T.Text
+     escape = T.replace "'" "'\\''"
+
+     escapeS :: String -> T.Text
+     escapeS = escape . T.pack
