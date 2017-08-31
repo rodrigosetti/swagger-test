@@ -3,10 +3,7 @@
 {-# LANGUAGE RankNTypes        #-}
 {-# LANGUAGE TupleSections     #-}
 {-# LANGUAGE TypeFamilies      #-}
-module Test.Swagger.Gen ( HTTPRequest(..)
-                        , Headers
-                        , Seed
-                        , OperationId
+module Test.Swagger.Gen ( module Test.Swagger.Types
                         , generateRequest) where
 
 import           Control.Applicative        ((<|>))
@@ -15,7 +12,6 @@ import           Control.Lens               hiding (elements)
 import           Control.Monad
 import           Data.Aeson
 import           Data.Binary.Builder
-import qualified Data.ByteString.Lazy       as LBS
 import           Data.CaseInsensitive
 import           Data.Generics
 import qualified Data.HashMap.Lazy          as HM
@@ -33,23 +29,8 @@ import           System.FilePath.Posix      (joinPath)
 import           Test.QuickCheck            hiding (Fixed)
 import           Test.QuickCheck.Gen        (unGen)
 import           Test.QuickCheck.Random
+import           Test.Swagger.Types
 
--- |The FullyQualifiedHost contains the scheme (i.e. http://), hostname and port.
-type FullyQualifiedHost = String
-
-type Seed = Int
-type OperationId = T.Text
-
-type Headers = [(CI T.Text, T.Text)]
-
-data HTTPRequest = HTTPRequest { requestOperationId :: Maybe String
-                               , requestHost        :: Maybe FullyQualifiedHost
-                               , requestMethod      :: Method
-                               , requestPath        :: T.Text
-                               , requestQuery       :: QueryText
-                               , requestHeaders     :: Headers
-                               , requestBody        :: Maybe LBS.ByteString }
-                                  deriving (Show, Eq)
 
 -- |Given a swagger.json schema, produce a Request that complies with the schema.
 --  The return type is a random Request (in the IO monad because it's random).
@@ -158,7 +139,7 @@ requestGenerator s' mopid =
 
     -- use scheme from operation, if defined, or from global
     scheme <- elements $ fromMaybe [Https] (operation ^. schemes <|> s ^. schemes)
-    pure $ HTTPRequest (T.unpack <$> operation ^. operationId)
+    pure $ HTTPRequest (operation ^. operationId)
                        (buildHost scheme <$> mHost)
                        method
                        (T.pack (joinPath [baseP, T.unpack path']))

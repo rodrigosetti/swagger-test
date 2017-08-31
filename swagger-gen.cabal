@@ -1,28 +1,33 @@
 name:                swagger-gen
-version:             0.1.0.0
+version:             0.1.0
 synopsis:            Testing of Swagger APIs
 description:         This package provides a library and executable tool
                      that supports testing APIs specified with Swagger. It
                      allows one to generate arbitrary Swagger requests for any
                      given specification.
 homepage:            https://github.com/rodrigosetti/swagger-gen#readme
+bug-reports:         https://github.com/rodrigosetti/swagger-gen/issues
 license:             BSD3
 license-file:        LICENSE
 author:              Rodrigo Setti
 maintainer:          rodrigosetti@gmail.com
-copyright:           2017 Yahoo inc. All rights reserved
+copyright:           2017 Rodrigo Setti. All rights reserved
 category:            Testing
 build-type:          Simple
 extra-source-files:  README.md
 cabal-version:       >=1.10
+stability:           alpha
 
 library
   hs-source-dirs:      src
   ghc-options:         -Wall
   exposed-modules:     Test.Swagger.Gen
+                     , Test.Swagger.Types
+                     , Test.Swagger.Validate
   build-depends:       base >= 4.7 && < 5
                      , QuickCheck == 2.10.*
                      , aeson
+                     , attoparsec
                      , binary
                      , bytestring
                      , case-insensitive
