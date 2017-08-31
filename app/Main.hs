@@ -20,8 +20,8 @@ import           Test.Swagger.Gen
 import           Test.Swagger.Validate
 
 -- |Program options
-data Opts = Opts Command
-                 FilePath -- ^Swagger input file
+data Opts = Opts FilePath -- ^Swagger input file
+                 Command
 
 data Command = Generate (Maybe Seed)
                         (Maybe OperationId)
@@ -38,18 +38,19 @@ instance Show OutputFormat where
   show OutputCurl = "curl"
 
 opts :: Parser Opts
-opts  = Opts <$> subparser ( command "generate" (info (generate <**> helper) (progDesc "Generate a request"))
+opts  = Opts <$> strOption ( metavar "FILENAME"
+                            <> long "schema"
+                            <> short 's'
+                            <> help "swagger JSON schema file to read from"
+                            <> value "swagger.json"
+                            <> showDefault)
+             <*> subparser ( command "generate" (info (generate <**> helper) (progDesc "Generate a request"))
                            <> command "validate" (info (validate <**> helper) (progDesc "Validate a response")))
-             <*> strArgument ( metavar "swagger.json"
-                             <> help "swagger spec to read from"
-                             <> value "swagger.json"
-                             <> showDefault)
   where
     generate :: Parser Command
     generate = Generate <$> optional (option auto  ( metavar "N"
                                               <> help "specify the seed for the random generator"
-                                              <> long "seed"
-                                              <> short 's' ))
+                                              <> long "seed" ))
                         <*> optional operationId
                         <*> option outputFormatReader ( metavar (intercalate "|" (map fst formatTable))
                                                        <> help "output format of the HTTP request"
@@ -78,7 +79,7 @@ opts  = Opts <$> subparser ( command "generate" (info (generate <**> helper) (pr
     formatTable = [(show o, o) | o <- [minBound..]]
 
 main :: IO ()
-main = do Opts cmd swaggerFile <- execParser optsInfo
+main = do Opts swaggerFile cmd <- execParser optsInfo
           contents <- LBS.readFile swaggerFile
           case eitherDecode contents of
             Left e -> die e

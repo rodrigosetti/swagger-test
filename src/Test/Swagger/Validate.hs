@@ -33,6 +33,11 @@ validateResponseBytes input s opId =
 -- against a Swagger schema
 validateResponse:: HttpResponse -> Swagger -> OperationId -> Maybe String
 validateResponse _ _ _ = Nothing -- TODO: implement
+{-
+  1. lookup operation id in swagger (Operation)
+  2. validates response header is defined in _operationProduces
+  3. validate that response matches one of _operationResponses (Responses)
+-}
 
 parseResponse :: LBS.ByteString -> Either String HttpResponse
 parseResponse = eitherResult . parse responseParser
