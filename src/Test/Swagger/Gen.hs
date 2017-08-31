@@ -34,10 +34,10 @@ import           Test.Swagger.Types
 
 -- |Given a swagger.json schema, produce a Request that complies with the schema.
 --  The return type is a random Request (in the IO monad because it's random).
-generateRequest :: Seed -> Swagger -> Maybe OperationId -> HTTPRequest
-generateRequest seed s mopid =
+generateRequest :: Seed -> Int -> Swagger -> Maybe OperationId -> HTTPRequest
+generateRequest seed size model mopid =
   let gen = mkQCGen seed
-   in unGen (requestGenerator s mopid) gen 30
+   in unGen (requestGenerator model mopid) gen size
 
 -- |Replace all references with inlines
 resolveReferences :: Swagger -> Swagger

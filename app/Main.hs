@@ -27,6 +27,7 @@ data Command = Generate (Maybe Seed)
                         (Maybe OperationId)
                         OutputFormat
                         Bool -- ^output extra header info with seed and/or operation id
+                        Int -- ^size parameter for the generation
              | Validate (Maybe FilePath) -- ^read http response from file or stdin
                         OperationId
 
@@ -60,6 +61,11 @@ opts  = Opts <$> strOption ( metavar "FILENAME"
                         <*> switch (long "info"
                                    <> short 'i'
                                    <> help "render information about seed and operation id")
+                        <*> option auto ( metavar "N"
+                                        <> long "size"
+                                        <> help "control the size of the generated request"
+                                        <> value 30
+                                        <> showDefault )
 
     validate :: Parser Command
     validate = Validate <$> optional (strOption ( metavar "FILENAME"
@@ -85,9 +91,9 @@ main = do Opts swaggerFile cmd <- execParser optsInfo
             Left e -> die e
             Right schema ->
               case cmd of
-                Generate mseed mopid ofmt renderInfo ->
+                Generate mseed mopid ofmt renderInfo size ->
                     do seed <- maybe randomIO pure mseed
-                       let req = generateRequest seed schema mopid
+                       let req = generateRequest seed size schema mopid
                            opid = requestOperationId req
                        when renderInfo $
                           TIO.putStrLn $ "# seed=" <> T.pack (show seed) <> maybe "" (\i -> " id=" <> i) opid
