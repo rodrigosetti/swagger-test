@@ -14,6 +14,7 @@ import qualified Data.ByteString                         as BS
 import qualified Data.ByteString.Lazy                    as LBS
 import           Data.CaseInsensitive
 import           Data.Char                               (digitToInt)
+import           Data.Monoid                             ((<>))
 import           Data.Swagger
 import           Data.Swagger.Internal.Schema.Validation
 import           Data.Text.Encoding
@@ -25,7 +26,7 @@ import           Test.Swagger.Types
 validateResponseBytes :: LBS.ByteString -> Swagger -> OperationId -> Maybe String
 validateResponseBytes input s opId =
   case parseResponse input of
-    Left e         -> Just e
+    Left e         -> Just $ "could not parse HTTP response: " <> e
     Right response -> validateResponse response s opId
 
 -- |Validate a response, from a particular operation id, (encoded in a byte-string)

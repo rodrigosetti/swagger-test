@@ -6,6 +6,7 @@ import           Data.Aeson
 import qualified Data.ByteString       as BS
 import qualified Data.ByteString.Lazy  as LBS
 import           Data.CaseInsensitive  (original)
+import           Data.List             (intercalate)
 import           Data.Maybe            (fromMaybe)
 import           Data.Semigroup        ((<>))
 import qualified Data.Text             as T
@@ -30,6 +31,7 @@ data Command = Generate (Maybe Seed)
                         OperationId
 
 data OutputFormat = OutputHttp | OutputCurl
+      deriving (Bounded, Enum)
 
 instance Show OutputFormat where
   show OutputHttp = "http"
@@ -49,7 +51,7 @@ opts  = Opts <$> subparser ( command "generate" (info (generate <**> helper) (pr
                                               <> long "seed"
                                               <> short 's' ))
                         <*> optional operationId
-                        <*> option outputFormatReader ( metavar "http|curl"
+                        <*> option outputFormatReader ( metavar (intercalate "|" (map fst formatTable))
                                                        <> help "output format of the HTTP request"
                                                        <> long "output-format"
                                                        <> value OutputHttp
@@ -71,9 +73,9 @@ opts  = Opts <$> subparser ( command "generate" (info (generate <**> helper) (pr
                                        <> help "specify a operation id to test (default pick randomly)")
 
     outputFormatReader :: ReadM OutputFormat
-    outputFormatReader = maybeReader (`lookup` table)
-      where
-        table = [(show o, o) | o <- [OutputHttp, OutputCurl]]
+    outputFormatReader = maybeReader (`lookup` formatTable)
+
+    formatTable = [(show o, o) | o <- [minBound..]]
 
 main :: IO ()
 main = do Opts cmd swaggerFile <- execParser optsInfo
@@ -91,7 +93,9 @@ main = do Opts cmd swaggerFile <- execParser optsInfo
                        printRequest ofmt req
                 Validate respFile opId ->
                     do respContents <- maybe LBS.getContents LBS.readFile respFile
-                       print $ parseResponse respContents
+                       case validateResponseBytes respContents schema opId of
+                         Just e  -> die $ "invalid: " <> e
+                         Nothing -> putStrLn "valid"
 
   where
     optsInfo = info (opts <**> helper)
