@@ -25,20 +25,20 @@ data Opts = Opts FilePath -- ^Swagger input file
 
 data Command = Generate (Maybe Seed)
                         (Maybe OperationId)
-                        OutputFormat
+                        Format -- ^request output format
                         Bool -- ^output extra header info with seed and/or operation id
                         Int -- ^size parameter for the generation
              | Validate (Maybe FilePath) -- ^read http response from file or stdin
                         OperationId
 
-data OutputFormat = OutputHttp | OutputCurl | OutputNone | OutputJSON
+data Format = FormatHttp | FormatCurl | FormatNone | FormatJSON
       deriving (Bounded, Enum)
 
-instance Show OutputFormat where
-  show OutputHttp = "http"
-  show OutputCurl = "curl"
-  show OutputNone = "none"
-  show OutputJSON = "json"
+instance Show Format where
+  show FormatHttp = "http"
+  show FormatCurl = "curl"
+  show FormatNone = "none"
+  show FormatJSON = "json"
 
 opts :: Parser Opts
 opts  = Opts <$> strOption ( metavar "FILENAME"
@@ -55,11 +55,11 @@ opts  = Opts <$> strOption ( metavar "FILENAME"
                                               <> help "specify the seed for the random generator"
                                               <> long "seed" ))
                         <*> optional operationId
-                        <*> option outputFormatReader ( metavar (intercalate "|" (map fst formatTable))
-                                                       <> help "output format of the HTTP request"
-                                                       <> long "output-format"
-                                                       <> value OutputHttp
-                                                       <> showDefault )
+                        <*> option formatReader ( metavar (intercalate "|" (map fst formatTable))
+                                                 <> help "output format of the HTTP request"
+                                                 <> long "request-format"
+                                                 <> value FormatHttp
+                                                 <> showDefault )
                         <*> switch (long "info"
                                    <> short 'i'
                                    <> help "render information about seed and operation id")
@@ -81,8 +81,8 @@ opts  = Opts <$> strOption ( metavar "FILENAME"
                                        <> metavar "ID"
                                        <> help "specify a operation id to test (default pick randomly)")
 
-    outputFormatReader :: ReadM OutputFormat
-    outputFormatReader = maybeReader (`lookup` formatTable)
+    formatReader :: ReadM Format
+    formatReader = maybeReader (`lookup` formatTable)
 
     formatTable = [(show o, o) | o <- [minBound..]]
 
@@ -112,10 +112,10 @@ main = do Opts swaggerFile cmd <- execParser optsInfo
                     <> header "Testing tool for Swagger APIs")
 
 -- Given a request and output format, render it correctly
-printRequest :: OutputFormat -> HttpRequest -> IO ()
-printRequest OutputJSON r = TIO.putStrLn $ decodeUtf8 $ LBS.toStrict $ encode r
-printRequest OutputNone _ = pure ()
-printRequest OutputHttp (HttpRequest _ method path query headers body) =
+printRequest :: Format -> HttpRequest -> IO ()
+printRequest FormatJSON r = TIO.putStrLn $ decodeUtf8 $ LBS.toStrict $ encode r
+printRequest FormatNone _ = pure ()
+printRequest FormatHttp (HttpRequest _ method path query headers body) =
   do BS.putStr method
      putStr " "
      TIO.putStr path
@@ -125,7 +125,7 @@ printRequest OutputHttp (HttpRequest _ method path query headers body) =
      case body of
        Just b  -> putStr "\n" >> TIO.putStrLn (decodeUtf8 $ LBS.toStrict b)
        Nothing -> pure ()
-printRequest OutputCurl (HttpRequest host method path query headers body) =
+printRequest FormatCurl (HttpRequest host method path query headers body) =
   do putStr "curl -i"
      when (method /= methodGet)
       $ BS.putStr $ " -X " <> method
