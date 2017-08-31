@@ -1,6 +1,5 @@
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RankNTypes        #-}
 {-# LANGUAGE TupleSections     #-}
 {-# LANGUAGE TypeFamilies      #-}
 module Test.Swagger.Gen ( module Test.Swagger.Types
@@ -13,7 +12,6 @@ import           Control.Monad
 import           Data.Aeson
 import           Data.Binary.Builder
 import           Data.CaseInsensitive
-import           Data.Generics
 import qualified Data.HashMap.Lazy          as HM
 import qualified Data.HashMap.Strict.InsOrd as M
 import           Data.List                  (partition)
@@ -29,6 +27,7 @@ import           System.FilePath.Posix      (joinPath)
 import           Test.QuickCheck            hiding (Fixed)
 import           Test.QuickCheck.Gen        (unGen)
 import           Test.QuickCheck.Random
+import           Test.Swagger
 import           Test.Swagger.Types
 
 
@@ -38,23 +37,6 @@ generateRequest :: Seed -> Int -> Swagger -> Maybe OperationId -> (Maybe Operati
 generateRequest seed size model mopid =
   let gen = mkQCGen seed
    in unGen (requestGenerator model mopid) gen size
-
--- |Replace all references with inlines
-resolveReferences :: Swagger -> Swagger
-resolveReferences s = everywhere' (mkT resolveSchema) $ everywhere' (mkT resolveParam) s
-  where
-    resolveParam :: Referenced Param -> Referenced Param
-    resolveParam i@Inline {} = i
-    resolveParam (Ref (Reference r))  = maybe (error $ "undefied schema: " <> T.unpack r) Inline
-                                      $ M.lookup r $ s ^. parameters
-    resolveSchema :: Referenced Schema -> Referenced Schema
-    resolveSchema i@Inline {} = i
-    resolveSchema (Ref (Reference r)) = maybe (error $ "undefied schema: " <> T.unpack r) Inline
-                                      $ M.lookup r $ s ^. definitions
-
-refToMaybe :: Referenced a -> Maybe a
-refToMaybe (Inline i) = Just i
-refToMaybe (Ref _)    = Nothing
 
 -- Random Request generator
 requestGenerator :: Swagger -> Maybe OperationId -> Gen (Maybe OperationId, HttpRequest)

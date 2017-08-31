@@ -70,9 +70,8 @@ opts  = Opts <$> strOption ( metavar "FILENAME"
                                         <> showDefault )
 
     validate :: Parser Command
-    validate = Validate <$> optional (strOption ( metavar "FILENAME"
-                                         <> help "http response file to read from (default=stdin)"
-                                      ))
+    validate = Validate <$> optional (strArgument ( metavar "FILENAME"
+                                                  <> help "http response file to read from (default=stdin)" ))
                         <*> operationId
 
     operationId :: Parser OperationId
@@ -102,8 +101,8 @@ main = do Opts swaggerFile cmd <- execParser optsInfo
                 Validate respFile opId ->
                     do respContents <- maybe LBS.getContents LBS.readFile respFile
                        case validateResponseBytes respContents schema opId of
-                         Just e  -> die $ "invalid: " <> e
-                         Nothing -> putStrLn "valid"
+                         Left e  -> die $ "invalid: " <> e
+                         Right _ -> putStrLn "valid"
 
   where
     optsInfo = info (opts <**> helper)
