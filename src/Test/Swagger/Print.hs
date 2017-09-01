@@ -5,16 +5,15 @@ module Test.Swagger.Print (Format(..)
                           , printRequest
                           , printResponse) where
 
-import           Control.Monad
 import           Data.Aeson
-import qualified Data.ByteString      as BS
-import qualified Data.ByteString.Lazy as LBS
+import qualified Data.ByteString        as BS
+import qualified Data.ByteString.Lazy   as LBS
 import           Data.CaseInsensitive
 import           Data.Maybe
 import           Data.Monoid
-import qualified Data.Text            as T
+import qualified Data.Text              as T
 import           Data.Text.Encoding
-import qualified Data.Text.IO         as TIO
+import           Data.Text.Lazy.Builder
 import           Network.HTTP.Types
 import           Test.Swagger.Types
 
@@ -38,34 +37,36 @@ requestFormats = [minBound..]
 responseFormats = [FormatHttp, FormatJSON, FormatNone]
 
 -- |Print a request according to format
-printRequest :: Format -> HttpRequest -> IO ()
-printRequest FormatJSON r = TIO.putStrLn $ decodeUtf8 $ LBS.toStrict $ encode r
-printRequest FormatNone _ = pure ()
+printRequest :: Format -> HttpRequest -> Builder
+printRequest FormatJSON r = fromUtf8Bytestring $ LBS.toStrict $ encode r
+printRequest FormatNone _ = mempty
 printRequest FormatHttp (HttpRequest _ method path query headers body) =
-  do BS.putStr method
-     putStr " "
-     TIO.putStr path
-     TIO.putStr $ decodeUtf8 $ renderQuery True $ queryTextToQuery query
-     putStrLn " HTTP/1.1"
-     forM_ headers $ \(k,v) -> TIO.putStr (original k) >> putStr ": " >> TIO.putStrLn v
-     case body of
-       Just b  -> putStr "\n" >> TIO.putStrLn (decodeUtf8 $ LBS.toStrict b)
-       Nothing -> pure ()
+     fromUtf8Bytestring method
+  <> fromText " "
+  <> fromText path
+  <> fromUtf8Bytestring (renderQuery True $ queryTextToQuery query)
+  <> fromTextLn " HTTP/1.1"
+  <> mconcat ((\(k,v) -> fromTextLn $ original k <> ": " <> v) <$> headers)
+  <> case body of
+       Just b  -> fromText "\n" <> fromUtf8Bytestring (LBS.toStrict b)
+       Nothing -> mempty
 printRequest FormatCurl (HttpRequest host method path query headers body) =
-  do putStr "curl -i"
-     when (method /= methodGet)
-      $ BS.putStr $ " -X " <> method
-     putStr " '"
-     let host' = fromMaybe "http://localhost" host
-     TIO.putStr $ escapeS host'
-     TIO.putStr $ escape path
-     TIO.putStr $ escapeBS $ renderQuery True $ queryTextToQuery query
-     putChar '\''
-     forM_ headers $ \(k,v) -> TIO.putStr (" -H '" <> escape (original k)) >> putStr ": " >> TIO.putStr (escape v <> "'")
-     case body of
-       Just b  -> TIO.putStrLn $ " -d '" <> escapeLBS b <> "'"
-       Nothing -> putChar '\n'
+     fromText "curl -i"
+  <> if method /= methodGet
+      then fromUtf8Bytestring $ " -X " <> method
+      else mempty
+  <> fromText " '"
+  <> fromText (escapeS host')
+  <> fromText (escape path)
+  <> fromText (escapeBS $ renderQuery True $ queryTextToQuery query)
+  <> singleton '\''
+  <> mconcat ((\(k,v) -> fromText $ " -H '" <> escape (original k) <> ": " <> escape v <> "'") <$> headers)
+  <> case body of
+       Just b  -> fromTextLn $ " -d '" <> escapeLBS b <> "'"
+       Nothing -> singleton '\n'
    where
+     host' = fromMaybe "http://localhost" host
+
      escapeLBS :: LBS.ByteString -> T.Text
      escapeLBS = escapeBS . LBS.toStrict
 
@@ -79,18 +80,25 @@ printRequest FormatCurl (HttpRequest host method path query headers body) =
      escapeS = escape . T.pack
 
 -- |Print a response according to format
-printResponse :: Format -> HttpResponse -> IO ()
+printResponse :: Format -> HttpResponse -> Builder
 printResponse FormatCurl _ = error "unsupported format"
-printResponse FormatJSON r = TIO.putStrLn $ decodeUtf8 $ LBS.toStrict $ encode r
-printResponse FormatNone _ = pure ()
+printResponse FormatJSON r = fromUtf8Bytestring $ LBS.toStrict $ encode r
+printResponse FormatNone _ = mempty
 printResponse FormatHttp r =
-  do let ver = responseHttpVersion r
-         st = responseStatus r
-         headers = responseHeaders r
-     putStr $ "HTTP/" <> show (httpMajor ver) <> "." <> show (httpMinor ver) <> " "
-     putStr $ show (statusCode st) <> " "
-     TIO.putStrLn $ decodeUtf8 $ statusMessage st
-     forM_ headers $ \(k,v) -> TIO.putStr (original k) >> putStr ": " >> TIO.putStrLn v
-     case responseBody r of
-       Just b  -> putStr "\n" >> TIO.putStrLn (decodeUtf8 $ LBS.toStrict b)
-       Nothing -> pure ()
+  let ver = responseHttpVersion r
+      st = responseStatus r
+      headers = responseHeaders r
+  in
+       fromString ("HTTP/" <> show (httpMajor ver) <> "." <> show (httpMinor ver) <> " ")
+    <> fromString (show (statusCode st) <> " ")
+    <> fromUtf8Bytestring (statusMessage st)
+    <> mconcat ((\(k,v) -> fromTextLn $ original k <> ": " <> v) <$> headers)
+    <> case responseBody r of
+         Just b  -> fromText "\n" <> fromUtf8Bytestring (LBS.toStrict b)
+         Nothing -> mempty
+
+fromUtf8Bytestring :: BS.ByteString -> Builder
+fromUtf8Bytestring = fromText . decodeUtf8
+
+fromTextLn :: T.Text -> Builder
+fromTextLn t = fromText t <> fromText "\n"

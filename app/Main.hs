@@ -10,17 +10,19 @@ Portability : POSIX
 -}
 module Main (main) where
 
-import           Control.Lens          ((^.))
+import           Control.Lens           ((^.))
 import           Control.Monad
 import           Data.Aeson
-import qualified Data.ByteString.Lazy  as LBS
-import           Data.List             (find, intercalate)
-import           Data.Semigroup        ((<>))
-import           Data.Swagger          hiding (Format, info)
-import qualified Data.Text             as T
-import qualified Data.Text.IO          as TIO
+import qualified Data.ByteString.Lazy   as LBS
+import           Data.List              (find, intercalate)
+import           Data.Semigroup         ((<>))
+import           Data.Swagger           hiding (Format, info)
+import qualified Data.Text              as T
+import qualified Data.Text.IO           as TIO
+import           Data.Text.Lazy.Builder
+import qualified Data.Text.Lazy.IO      as LTIO
 import           Options.Applicative
-import           System.Exit           (die)
+import           System.Exit            (die)
 import           System.Random
 import           Test.Swagger
 
@@ -131,7 +133,7 @@ main = do Opts swaggerFile cmd <- execParser optsInfo
                 Request mseed mopid reqFmt resFmt renderInfo size ->
                     do  (op, req) <- doGenerate model mseed mopid reqFmt renderInfo size
                         res <- doHttpRequest req
-                        printResponse resFmt res
+                        LTIO.putStrLn $ toLazyText $ printResponse resFmt res
                         case validateResponseWithOperation res model op of
                            Left e  -> die $ "invalid: " <> e
                            Right _ -> putStrLn "valid"
@@ -148,5 +150,5 @@ main = do Opts swaggerFile cmd <- execParser optsInfo
            let (op, req) = generateRequest seed size model mopid
            when renderInfo $
               TIO.putStrLn $ "# seed=" <> T.pack (show seed) <> maybe "" (\i -> " id=" <> i) (op ^. operationId)
-           printRequest reqFmt req
+           LTIO.putStrLn $ toLazyText $ printRequest reqFmt req
            pure (op, req)
