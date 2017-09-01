@@ -1,27 +1,22 @@
-module Test.Swagger (resolveReferences, refToMaybe) where
+{-|
+Module      : Test.Swagger
+Description : Re-exports
+Copyright   : (c) Rodrigo Setti, 2017
+License     : BSD3
+Maintainer  : rodrigosetti@gmail.com
+Stability   : experimental
+Portability : POSIX
 
-import           Control.Lens
-import           Data.Generics
-import qualified Data.HashMap.Strict.InsOrd as M
-import           Data.Monoid                ((<>))
-import           Data.Swagger
-import qualified Data.Text                  as T
+Re-exports
+-}
+module Test.Swagger ( module Test.Swagger.Gen
+                    , module Test.Swagger.Print
+                    , module Test.Swagger.Request
+                    , module Test.Swagger.Types
+                    , module Test.Swagger.Validate ) where
 
--- |Replace all references with inlines
-resolveReferences :: Swagger -> Swagger
-resolveReferences s = everywhere' (mkT resolveSchema) $ everywhere' (mkT resolveParam) s
-  -- NOTE: we need to use the top-down everywhere variant for this to work as intented
-  where
-    resolveParam :: Referenced Param -> Referenced Param
-    resolveParam i@Inline {} = i
-    resolveParam (Ref (Reference r))  = maybe (error $ "undefied schema: " <> T.unpack r) Inline
-                                      $ M.lookup r $ s ^. parameters
-    resolveSchema :: Referenced Schema -> Referenced Schema
-    resolveSchema i@Inline {} = i
-    resolveSchema (Ref (Reference r)) = maybe (error $ "undefied schema: " <> T.unpack r) Inline
-                                      $ M.lookup r $ s ^. definitions
-
--- |Transform a reference into a Just value if is inline, Nothing, otherwise
-refToMaybe :: Referenced a -> Maybe a
-refToMaybe (Inline i) = Just i
-refToMaybe (Ref _)    = Nothing
+import           Test.Swagger.Gen
+import           Test.Swagger.Print
+import           Test.Swagger.Request
+import           Test.Swagger.Types
+import           Test.Swagger.Validate

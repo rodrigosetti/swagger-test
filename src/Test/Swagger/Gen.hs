@@ -2,8 +2,19 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections     #-}
 {-# LANGUAGE TypeFamilies      #-}
-module Test.Swagger.Gen ( module Test.Swagger.Types
-                        , generateRequest) where
+{-|
+Module      : Test.Swagger.Gen
+Description : Exposes a function to generate a random request
+Copyright   : (c) Rodrigo Setti, 2017
+License     : BSD3
+Maintainer  : rodrigosetti@gmail.com
+Stability   : experimental
+Portability : POSIX
+
+Exposes 'generateRequest', which creates a random request from a Swagger
+schema.
+-}
+module Test.Swagger.Gen (generateRequest) where
 
 import           Control.Applicative        ((<|>))
 import           Control.Arrow              ((&&&))
@@ -27,7 +38,6 @@ import           System.FilePath.Posix      (joinPath)
 import           Test.QuickCheck            hiding (Fixed)
 import           Test.QuickCheck.Gen        (unGen)
 import           Test.QuickCheck.Random
-import           Test.Swagger
 import           Test.Swagger.Types
 
 

@@ -1,14 +1,36 @@
 # swagger-test
 
-This is a package that helps you to test your [swagger](https://swagger.io) API.
+This is a tool for
+[Property Based Testing](https://en.wikipedia.org/wiki/Property_testing)
+of [swagger](https://swagger.io) APIs.
 
-It exposes libraries and a handy executable to generate random valid request to
-your API according to the specification. Sort of "monkey test" for APIs.
+It basically allow you to approximate the computation of the following
+proposition:
 
-It can be easily integrated into other tools or testing systems by using the
-command line interface.
+> valid(response, schema), response = execute(request), ∀ request ∈ schema
 
-## Command Line Tool
+Which translates to:
+
+> For all valid requests that can be derived from my Swagger schema, the
+> API response obtained from executing that request is valid according to the
+> same Swagger schema.
+
+The tool exposes several ways to configure get value from parts of it, for
+example, you may be interested in getting just a random valid request from the
+schema (use the `generate` command), or validating if a given response (from a
+particular operation) is valid (use the `validate` command), or, run one sample
+instance of the full proposition, which picks a random request and validate it's
+resulting response (use the `request` command).
+
+The generator random request values are reproducible by re-using the same _seed_
+value, or one can focus on a particular operation by specifying the operation
+id.
+
+The tool also simplifies integration with other systems by allowing to configure
+output formats as standard HTTP message, JSON, or curl. Additionally, there
+are Haskell modules exposed as a library if one wants to build on top of it.
+
+## Command Line Interface
 
 *swagger-test* supports three commands:
 

@@ -1,6 +1,18 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Test.Swagger.Validate ( module Test.Swagger.Types
-                             , parseResponse
+{-|
+Module      : Test.Swagger.Validate
+Description : Exposes functions to validate responses
+Copyright   : (c) Rodrigo Setti, 2017
+License     : BSD3
+Maintainer  : rodrigosetti@gmail.com
+Stability   : experimental
+Portability : POSIX
+
+Exposes some functions to validate responses against a Swagger schema.
+There are four functions that can be used depending whether the response
+is parsed, if the operation is available (or just the id)
+-}
+module Test.Swagger.Validate ( parseResponse
                              , validateResponseBytes
                              , validateResponseWithOperation
                              , validateResponse ) where
@@ -26,9 +38,8 @@ import           Data.Swagger
 import           Data.Swagger.Internal.Schema.Validation
 import qualified Data.Text                               as T
 import           Data.Text.Encoding
-import           Network.HTTP.Types
 import           Network.HTTP.Media
-import           Test.Swagger
+import           Network.HTTP.Types
 import           Test.Swagger.Types
 
 -- |Validate a response, from a particular operation id, (encoded in a byte-string)

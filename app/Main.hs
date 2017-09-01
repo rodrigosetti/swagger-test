@@ -1,4 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-|
+Module      : Main
+Description : Command line application
+Copyright   : (c) Rodrigo Setti, 2017
+License     : BSD3
+Maintainer  : rodrigosetti@gmail.com
+Stability   : experimental
+Portability : POSIX
+-}
 module Main (main) where
 
 import           Control.Lens          ((^.))
@@ -13,10 +22,7 @@ import qualified Data.Text.IO          as TIO
 import           Options.Applicative
 import           System.Exit           (die)
 import           System.Random
-import           Test.Swagger.Gen
-import           Test.Swagger.Print
-import           Test.Swagger.Request
-import           Test.Swagger.Validate
+import           Test.Swagger
 
 -- |Program options
 data Opts = Opts FilePath -- ^Swagger input file

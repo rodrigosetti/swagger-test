@@ -18,6 +18,8 @@ import qualified Data.Text.IO         as TIO
 import           Network.HTTP.Types
 import           Test.Swagger.Types
 
+-- |Possible output formats that applies to 'HttpRequest' and 'HttpResponse'
+-- values
 data Format = FormatHttp | FormatCurl | FormatNone | FormatJSON
       deriving (Bounded, Enum)
 
@@ -28,10 +30,14 @@ instance Show Format where
   show FormatJSON = "json"
 
 requestFormats, responseFormats :: [Format]
+
+-- |Valid output formats for 'HttpRequest' values
 requestFormats = [minBound..]
+
+-- |Valid output formats for 'HttpResponse' values
 responseFormats = [FormatHttp, FormatJSON, FormatNone]
 
--- Given a request and output format, render it correctly
+-- |Print a request according to format
 printRequest :: Format -> HttpRequest -> IO ()
 printRequest FormatJSON r = TIO.putStrLn $ decodeUtf8 $ LBS.toStrict $ encode r
 printRequest FormatNone _ = pure ()
@@ -72,7 +78,7 @@ printRequest FormatCurl (HttpRequest host method path query headers body) =
      escapeS :: String -> T.Text
      escapeS = escape . T.pack
 
-
+-- |Print a response according to format
 printResponse :: Format -> HttpResponse -> IO ()
 printResponse FormatCurl _ = error "unsupported format"
 printResponse FormatJSON r = TIO.putStrLn $ decodeUtf8 $ LBS.toStrict $ encode r

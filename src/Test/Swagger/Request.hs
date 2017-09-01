@@ -1,3 +1,15 @@
+{-|
+Module      : Test.Swagger.Request
+Description : Exposes a function to perform the HTTP request
+Copyright   : (c) Rodrigo Setti, 2017
+License     : BSD3
+Maintainer  : rodrigosetti@gmail.com
+Stability   : experimental
+Portability : POSIX
+
+Exposes 'doHttpRequest', which executes the HTTP request and return the
+response.
+-}
 module Test.Swagger.Request (doHttpRequest) where
 
 import           Control.Arrow
@@ -14,6 +26,7 @@ import           Test.Swagger.Types   hiding (requestBody, requestHeaders,
                                        responseBody, responseHeaders,
                                        responseStatus)
 
+-- |Executes the HTTP request and returns the HTTP response
 doHttpRequest :: HttpRequest -> IO HttpResponse
 doHttpRequest req = do manager <- getGlobalManager
                        res <- httpLbs (transformReq req) manager
