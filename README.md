@@ -10,6 +10,14 @@ command line interface.
 
 ## Command Line Tool
 
+*swagger-test* supports three commands:
+
+ * `generate` - generates a new random valid request from Swagger schema.
+ * `validate` - validate a response to a given operation id, according to the
+   schema.
+ * `request` - generate and make the request, then validates the response
+   (combines generate and validate).
+
 ```console
 swagger-test --help
 ```
@@ -26,8 +34,9 @@ Available options:
   -h,--help                Show this help text
 
 Available commands:
-  generate                 Generate a request
-  validate                 Validate a response
+  generate                 Generate a random request according to Schema
+  validate                 Validate a response against Schema
+  request                  Generate, make the request, and validate response
 ```
 
 ### Sub-commands
@@ -62,5 +71,28 @@ Available options:
   FILENAME                 http response file to read from (default=stdin)
   -o,--operation ID        specify a operation id to test (default pick
                            randomly)
+  -h,--help                Show this help text
+```
+
+#### Request
+
+```
+Usage: swagger-test request [--seed N] [-o|--operation ID]
+                            [--request-format http|curl|none|json]
+                            [--response-format http|json|none] [-i|--info]
+                            [--size N]
+  Generate, make the request, and validate response
+
+Available options:
+  --seed N                 specify the seed for the random generator
+  -o,--operation ID        specify a operation id to test (default pick
+                           randomly)
+  --request-format http|curl|none|json
+                           output format of the HTTP request (default: none)
+  --response-format http|json|none
+                           output format of the HTTP request (default: none)
+  -i,--info                render information about seed and operation id
+  --size N                 control the size of the generated
+                           request (default: 30)
   -h,--help                Show this help text
 ```

@@ -43,8 +43,20 @@ instance ToJSON HttpRequest where
     where
       headersMap = M.fromList $ first original <$> requestHeaders r
 
-data HttpResponse = HTTPResponse { responseHttpVersion :: HttpVersion
+data HttpResponse = HttpResponse { responseHttpVersion :: HttpVersion
                                  , responseStatus      :: Status
                                  , responseHeaders     :: Headers
                                  , responseBody        :: Maybe LBS.ByteString }
                       deriving (Show)
+
+instance ToJSON HttpResponse where
+  toJSON r = object [ "version" .= object [ "major" .= toJSON (httpMajor ver)
+                                          , "minor" .= toJSON (httpMinor ver)]
+                    , "status" .= object [ "code" .= toJSON (statusCode st)
+                                         , "message" .= toJSON (decodeUtf8 $ statusMessage st) ]
+                    , "headers" .= toJSON headersMap
+                    , "body" .= toJSON (decodeUtf8 . LBS.toStrict <$> responseBody r) ]
+    where
+      ver = responseHttpVersion r
+      st = responseStatus r
+      headersMap = M.fromList $ first original <$> responseHeaders r

@@ -2,6 +2,7 @@
 module Test.Swagger.Validate ( module Test.Swagger.Types
                              , parseResponse
                              , validateResponseBytes
+                             , validateResponseWithOperation
                              , validateResponse ) where
 
 import           Control.Applicative
@@ -38,13 +39,21 @@ validateResponseBytes input s opId =
     Left e         -> Left $ "could not parse HTTP response: " <> e
     Right response -> validateResponse response s opId
 
--- |Validate a response, from a particular operation id, (encoded in a byte-string)
--- against a Swagger schema
+-- |Validate a response, from a particular operation id against a Swagger schema
 validateResponse:: HttpResponse -> Swagger -> OperationId -> Either String ()
-validateResponse res s' opid =
+validateResponse res s opid =
     case maybeOp of
       Nothing        -> Left $ "operation not defined: " <> T.unpack opid
-      Just operation ->
+      Just operation -> validateResponseWithOperation res s operation
+  where
+   maybeOp = listToMaybe $ listify operationMatches s
+
+   operationMatches :: Operation -> Bool
+   operationMatches o = Just opid == o ^. operationId
+
+-- |Validate a response, from a particular operation against a Swagger schema
+validateResponseWithOperation :: HttpResponse -> Swagger -> Operation -> Either String ()
+validateResponseWithOperation res s' operation =
         do let code = statusCode $ responseStatus res
                msr = M.lookup code (operation ^. responses.responses)
                     <|> operation ^. responses.default_
@@ -86,11 +95,6 @@ validateResponse res s' opid =
  where
    s = resolveReferences s'
 
-   maybeOp = listToMaybe $ listify operationMatches s
-
-   operationMatches :: Operation -> Bool
-   operationMatches o = Just opid == o ^. operationId
-
    -- TODO: make it support patterns
    cfg = defaultConfig
 
@@ -116,7 +120,7 @@ responseParser = do ver <- versionParser <?> "http version"
                     hs <- headerParser `sepBy` endOfLine
                     body <- try (endOfLine >> endOfLine >> (Just <$> bodyParser)) <|> pure Nothing
                     endOfInput
-                    pure $ HTTPResponse ver status hs body
+                    pure $ HttpResponse ver status hs body
     where
       endOfLine = string "\r\n" <|> string "\n"
 

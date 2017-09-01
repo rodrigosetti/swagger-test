@@ -24,6 +24,8 @@ library
   ghc-options:         -Wall
   exposed-modules:     Test.Swagger
                      , Test.Swagger.Gen
+                     , Test.Swagger.Print
+                     , Test.Swagger.Request
                      , Test.Swagger.Types
                      , Test.Swagger.Validate
   build-depends:       base >= 4.7 && < 5
@@ -34,6 +36,8 @@ library
                      , bytestring
                      , case-insensitive
                      , filepath
+                     , http-client
+                     , http-client-tls
                      , http-media
                      , http-types
                      , insert-ordered-containers
@@ -52,9 +56,8 @@ executable swagger-test
   build-depends:       base
                      , bytestring
                      , swagger-test
-                     , http-types
+                     , lens
                      , text
-                     , case-insensitive
                      , optparse-applicative
                      , swagger2
                      , aeson

@@ -33,13 +33,13 @@ import           Test.Swagger.Types
 
 -- |Given a swagger.json schema, produce a Request that complies with the schema.
 --  The return type is a random Request (in the IO monad because it's random).
-generateRequest :: Seed -> Int -> Swagger -> Maybe OperationId -> (Maybe OperationId, HttpRequest)
+generateRequest :: Seed -> Int -> Swagger -> Maybe OperationId -> (Operation, HttpRequest)
 generateRequest seed size model mopid =
   let gen = mkQCGen seed
    in unGen (requestGenerator model mopid) gen size
 
 -- Random Request generator
-requestGenerator :: Swagger -> Maybe OperationId -> Gen (Maybe OperationId, HttpRequest)
+requestGenerator :: Swagger -> Maybe OperationId -> Gen (Operation, HttpRequest)
 requestGenerator s' mopid =
  do let s = resolveReferences s'
         baseP = fromMaybe "/" $ s ^. basePath
@@ -121,7 +121,7 @@ requestGenerator s' mopid =
 
     -- use scheme from operation, if defined, or from global
     scheme <- elements $ fromMaybe [Https] (operation ^. schemes <|> s ^. schemes)
-    pure ( operation ^. operationId
+    pure ( operation
           , HttpRequest (buildHost scheme <$> mHost)
                         method
                         (T.pack (joinPath [baseP, T.unpack path']))
