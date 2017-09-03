@@ -34,7 +34,7 @@ import           Data.Swagger.Internal      (SwaggerKind (..))
 import qualified Data.Text                  as T
 import qualified Data.Vector                as V
 import           Network.HTTP.Types
-import           System.FilePath.Posix      (joinPath)
+import           System.FilePath.Posix      ((</>))
 import           Test.QuickCheck            hiding (Fixed)
 import           Test.QuickCheck.Gen        (unGen)
 import           Test.QuickCheck.Random
@@ -43,7 +43,7 @@ import           Test.Swagger.Types
 
 -- |Given a swagger.json schema, produce a Request that complies with the schema.
 --  The return type is a random Request (in the IO monad because it's random).
-generateRequest :: Seed -> Int -> Swagger -> Maybe OperationId -> (Operation, HttpRequest)
+generateRequest :: Seed -> Size -> Swagger -> Maybe OperationId -> (Operation, HttpRequest)
 generateRequest seed size model mopid =
   let gen = mkQCGen seed
    in unGen (requestGenerator model mopid) gen size
@@ -58,14 +58,14 @@ requestGenerator s' mopid =
     -- compute all available operations, in a 4-tuple
     let availableOps :: [(FilePath, PathItem, Method, Operation)]
         availableOps = catMaybes $ mconcat $
-          (\i -> let (path, item) = i
-                 in [  (path, item, methodGet,) <$> item ^. get
-                     , (path, item, methodPut,) <$> item ^. put
-                     , (path, item, methodPost,) <$> item ^. post
-                     , (path, item, methodDelete,) <$> item ^. delete
-                     , (path, item, methodOptions,) <$> item ^. options
-                     , (path, item, methodHead,) <$> item ^. head_
-                     , (path, item, methodPatch,) <$> item ^. patch ])
+          (\(path, item) ->
+              [  (path, item, methodGet,) <$> item ^. get
+               , (path, item, methodPut,) <$> item ^. put
+               , (path, item, methodPost,) <$> item ^. post
+               , (path, item, methodDelete,) <$> item ^. delete
+               , (path, item, methodOptions,) <$> item ^. options
+               , (path, item, methodHead,) <$> item ^. head_
+               , (path, item, methodPatch,) <$> item ^. patch ])
           <$> M.toList (s ^. paths)
 
     -- select one operation of the selected path either randomly or lookup by
@@ -134,7 +134,7 @@ requestGenerator s' mopid =
     pure ( operation
           , HttpRequest (buildHost scheme <$> mHost)
                         method
-                        (T.pack (joinPath [baseP, T.unpack path']))
+                        (T.pack (baseP </> T.unpack path'))
                         queryStr
                         randomHeaders'
                         (snd <$> maybeMimeAndBody) )

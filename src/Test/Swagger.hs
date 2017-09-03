@@ -13,10 +13,12 @@ module Test.Swagger ( module Test.Swagger.Gen
                     , module Test.Swagger.Print
                     , module Test.Swagger.Request
                     , module Test.Swagger.Types
+                    , module Test.Swagger.Report
                     , module Test.Swagger.Validate ) where
 
 import           Test.Swagger.Gen
 import           Test.Swagger.Print
+import           Test.Swagger.Report
 import           Test.Swagger.Request
 import           Test.Swagger.Types
 import           Test.Swagger.Validate

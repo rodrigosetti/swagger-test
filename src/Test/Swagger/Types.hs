@@ -13,6 +13,7 @@ of swagger-test.
 -}
 module Test.Swagger.Types (FullyQualifiedHost
                           , Seed
+                          , Size
                           , OperationId
                           , HttpHeader
                           , Headers
@@ -39,6 +40,7 @@ import           Data.Swagger
 type FullyQualifiedHost = String
 
 type Seed = Int
+type Size = Int
 type OperationId = T.Text
 
 type HttpHeader = (CI T.Text, T.Text)

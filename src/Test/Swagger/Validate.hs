@@ -13,6 +13,7 @@ There are four functions that can be used depending whether the response
 is parsed, if the operation is available (or just the id)
 -}
 module Test.Swagger.Validate ( parseResponse
+                             , ValidationResult
                              , validateResponseBytes
                              , validateResponseWithOperation
                              , validateResponse ) where
@@ -42,16 +43,18 @@ import           Network.HTTP.Media
 import           Network.HTTP.Types
 import           Test.Swagger.Types
 
+type ValidationResult = Either String ()
+
 -- |Validate a response, from a particular operation id, (encoded in a byte-string)
 -- against a Swagger schema
-validateResponseBytes :: LBS.ByteString -> Swagger -> OperationId -> Either String ()
+validateResponseBytes :: LBS.ByteString -> Swagger -> OperationId -> ValidationResult
 validateResponseBytes input s opId =
   case parseResponse input of
     Left e         -> Left $ "could not parse HTTP response: " <> e
     Right response -> validateResponse response s opId
 
 -- |Validate a response, from a particular operation id against a Swagger schema
-validateResponse:: HttpResponse -> Swagger -> OperationId -> Either String ()
+validateResponse:: HttpResponse -> Swagger -> OperationId -> ValidationResult
 validateResponse res s opid =
     case maybeOp of
       Nothing        -> Left $ "operation not defined: " <> T.unpack opid
@@ -63,7 +66,7 @@ validateResponse res s opid =
    operationMatches o = Just opid == o ^. operationId
 
 -- |Validate a response, from a particular operation against a Swagger schema
-validateResponseWithOperation :: HttpResponse -> Swagger -> Operation -> Either String ()
+validateResponseWithOperation :: HttpResponse -> Swagger -> Operation -> ValidationResult
 validateResponseWithOperation res s' operation =
         do let code = statusCode $ responseStatus res
                msr = M.lookup code (operation ^. responses.responses)
@@ -109,10 +112,10 @@ validateResponseWithOperation res s' operation =
    -- TODO: make it support patterns
    cfg = defaultConfig
 
-   validateWithSchema' :: Value -> Schema -> Either String ()
+   validateWithSchema' :: Value -> Schema -> ValidationResult
    validateWithSchema' v = resultToEither . runValidation (validateWithSchema v) cfg
 
-   validateWithParamSchema' :: Value -> ParamSchema t -> Either String ()
+   validateWithParamSchema' :: Value -> ParamSchema t -> ValidationResult
    validateWithParamSchema' v = resultToEither . runValidation (validateWithParamSchema v) cfg
 
    resultToEither :: Result a -> Either String a

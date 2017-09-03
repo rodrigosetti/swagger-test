@@ -33,8 +33,10 @@ library
                      , aeson
                      , attoparsec
                      , binary
+                     , blaze-html
                      , bytestring
                      , case-insensitive
+                     , containers
                      , filepath
                      , http-client
                      , http-client-tls
@@ -42,6 +44,7 @@ library
                      , http-types
                      , insert-ordered-containers
                      , lens
+                     , random
                      , scientific
                      , swagger2
                      , syb
@@ -55,6 +58,7 @@ executable swagger-test
   ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N
   build-depends:       base
                      , bytestring
+                     , directory
                      , swagger-test
                      , lens
                      , text
