@@ -1,25 +1,152 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-|
+Module      : Main
+Description : Command line application
+Copyright   : (c) Rodrigo Setti, 2017
+License     : BSD3
+Maintainer  : rodrigosetti@gmail.com
+Stability   : experimental
+Portability : POSIX
+-}
 module Main (main) where
 
-import           Control.Monad              (forM_)
-import qualified Data.ByteString            as BS
-import qualified Data.ByteString.Char8      as C
-import qualified Data.ByteString.Lazy.Char8 as LC
-import           Data.CaseInsensitive       (original)
-import           Data.Maybe                 (fromMaybe)
-import           System.Exit                (die)
-import           Test.Swagger.Gen
+import           Control.Lens          ((^.))
+import           Control.Monad
+import           Data.Aeson
+import qualified Data.ByteString.Lazy  as LBS
+import           Data.List             (find, intercalate)
+import           Data.Semigroup        ((<>))
+import           Data.Swagger          hiding (Format, info)
+import qualified Data.Text             as T
+import qualified Data.Text.IO          as TIO
+import           Options.Applicative
+import           System.Exit           (die)
+import           System.Random
+import           Test.Swagger
+
+-- |Program options
+data Opts = Opts FilePath -- ^Swagger input file
+                 Command
+
+data Command = Generate (Maybe Seed)
+                        (Maybe OperationId)
+                        Format -- ^request output format
+                        Bool -- ^output extra header info with seed and/or operation id
+                        Int -- ^size parameter for the generation
+             | Validate (Maybe FilePath) -- ^read http response from file or stdin
+                        OperationId
+             | Request (Maybe Seed)
+                        (Maybe OperationId)
+                        Format -- ^request output format
+                        Format -- ^response output format
+                        Bool -- ^output extra header info with seed and/or operation id
+                        Int -- ^size parameter for the generation
+
+opts :: Parser Opts
+opts  = Opts <$> strOption ( metavar "FILENAME"
+                            <> long "schema"
+                            <> short 's'
+                            <> help "swagger JSON schema file to read from"
+                            <> value "swagger.json"
+                            <> showDefault)
+             <*> subparser ( command "generate" (info (generate <**> helper)
+                                                      (progDesc "Generate a random request according to Schema"))
+                           <> command "validate" (info (validate <**> helper)
+                                                       (progDesc "Validate a response against Schema"))
+                           <> command "request" (info (request <**> helper)
+                                                      (progDesc "Generate, make the request, and validate response")))
+  where
+    generate :: Parser Command
+    generate = Generate <$> seedP
+                        <*> optional operationIdP
+                        <*> option (formatReader requestFormats)
+                                   ( metavar (intercalate "|" (map show requestFormats))
+                                   <> help "output format of the HTTP request"
+                                   <> long "request-format"
+                                   <> value FormatHttp
+                                   <> showDefault )
+                        <*> infoP
+                        <*> sizeP
+
+    seedP = optional (option auto  ( metavar "N"
+                                  <> help "specify the seed for the random generator"
+                                  <> long "seed" ))
+
+    infoP = switch (long "info"
+                 <> short 'i'
+                 <> help "render information about seed and operation id")
+
+    sizeP = option auto ( metavar "N"
+                      <> long "size"
+                      <> help "control the size of the generated request"
+                      <> value 30
+                      <> showDefault )
+
+    request :: Parser Command
+    request = Request <$> seedP
+                        <*> optional operationIdP
+                        <*> option (formatReader requestFormats)
+                                   ( metavar (intercalate "|" (map show requestFormats))
+                                   <> help "output format of the HTTP request"
+                                   <> long "request-format"
+                                   <> value FormatNone
+                                   <> showDefault )
+                        <*> option (formatReader responseFormats)
+                                   (metavar (intercalate "|" (map show responseFormats))
+                                   <> help "output format of the HTTP request"
+                                   <> long "response-format"
+                                   <> value FormatNone
+                                   <> showDefault )
+                        <*> infoP
+                        <*> sizeP
+
+    validate :: Parser Command
+    validate = Validate <$> optional (strArgument ( metavar "FILENAME"
+                                                  <> help "http response file to read from (default=stdin)" ))
+                        <*> operationIdP
+
+    operationIdP :: Parser OperationId
+    operationIdP = T.pack <$> strOption (long "operation"
+                                       <> short 'o'
+                                       <> metavar "ID"
+                                       <> help "specify a operation id to test (default pick randomly)")
+
+    formatReader :: [Format] -> ReadM Format
+    formatReader valids = maybeReader (\s -> find (\f -> show f == s) valids)
 
 main :: IO ()
-main = do contents <- BS.readFile "swagger.json"
-          either die (>>= printRequest) $ generateRequestFromJsonDefinition contents
+main = do Opts swaggerFile cmd <- execParser optsInfo
+          contents <- LBS.readFile swaggerFile
+          case eitherDecode contents of
+            Left e -> die e
+            Right model ->
+              case cmd of
+                Generate mseed mopid reqFmt renderInfo size ->
+                    void $ doGenerate model mseed mopid reqFmt renderInfo size
+                Validate respFile opId ->
+                    do respContents <- maybe LBS.getContents LBS.readFile respFile
+                       case validateResponseBytes respContents model opId of
+                         Left e  -> die $ "invalid: " <> e
+                         Right _ -> putStrLn "valid"
+                Request mseed mopid reqFmt resFmt renderInfo size ->
+                    do  (op, req) <- doGenerate model mseed mopid reqFmt renderInfo size
+                        res <- doHttpRequest req
+                        printResponse resFmt res
+                        case validateResponseWithOperation res model op of
+                           Left e  -> die $ "invalid: " <> e
+                           Right _ -> putStrLn "valid"
 
-printRequest :: JsonHTTPRequest -> IO ()
-printRequest (JsonHTTPRequest host method path headers body) =
-  do BS.putStr method
-     putStr " "
-     putStr $ fromMaybe "" host
-     BS.putStrLn path
-     forM_ headers $ \(k,v) -> BS.putStr (original k) >> putStr ": " >> C.putStrLn v
-     case body of
-       Just b  -> putStr "\n" >> LC.putStrLn b
-       Nothing -> pure ()
+  where
+    optsInfo = info (opts <**> helper)
+                    (fullDesc
+                    <> progDesc "Generate Swagger requests and validates responses"
+                    <> header "Testing tool for Swagger APIs")
+
+    doGenerate :: Swagger -> Maybe Seed -> Maybe OperationId -> Format -> Bool -> Int -> IO (Operation, HttpRequest)
+    doGenerate model mseed mopid reqFmt renderInfo size =
+        do seed <- maybe randomIO pure mseed
+           let (op, req) = generateRequest seed size model mopid
+           when renderInfo $
+              TIO.putStrLn $ "# seed=" <> T.pack (show seed) <> maybe "" (\i -> " id=" <> i) (op ^. operationId)
+           printRequest reqFmt req
+           pure (op, req)
