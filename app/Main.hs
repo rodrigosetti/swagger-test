@@ -10,36 +10,39 @@ Portability : POSIX
 -}
 module Main (main) where
 
-import           Control.Lens           ((^.))
+import           Control.Concurrent.Async
+import           Control.Lens             ((^.))
 import           Control.Monad
 import           Data.Aeson
-import qualified Data.ByteString.Lazy   as LBS
+import qualified Data.ByteString.Lazy     as LBS
 import           Data.List
-import           Data.Semigroup         ((<>))
-import           Data.Swagger           hiding (Format, info)
-import qualified Data.Text              as T
-import qualified Data.Text.IO           as TIO
+import           Data.Semigroup           ((<>))
+import           Data.Swagger             hiding (Format, info)
+import qualified Data.Text                as T
+import qualified Data.Text.IO             as TIO
 import           Data.Text.Lazy.Builder
-import qualified Data.Text.Lazy.IO      as LTIO
+import qualified Data.Text.Lazy.IO        as LTIO
 import           Options.Applicative
 import           System.Directory
-import           System.Exit            (die)
+import           System.Exit              (die)
+import           System.FilePath.Posix
 import           System.Random
 import           Test.Swagger
-import           System.FilePath.Posix
 
 -- |Program options
-data Opts = Opts FilePath -- ^Swagger input file
-                 Command
+newtype Opts = Opts Command
 
-data Command = Generate (Maybe Seed)
+data Command = Generate FilePath -- ^Swagger input file
+                        (Maybe Seed)
                         (Maybe OperationId)
                         Format -- ^request output format
                         Bool -- ^output extra header info with seed and/or operation id
                         Size -- ^size parameter for the generation
-             | Validate (Maybe FilePath) -- ^read http response from file or stdin
+             | Validate FilePath -- ^Swagger input file
+                        (Maybe FilePath) -- ^read http response from file or stdin
                         OperationId
-             | Request (Maybe Seed)
+             | Request  FilePath -- ^Swagger input file
+                        (Maybe Seed)
                         (Maybe OperationId)
                         Format -- ^request output format
                         Format -- ^response output format
@@ -51,13 +54,7 @@ data Command = Generate (Maybe Seed)
                       Size -- ^size parameter for the generation
 
 opts :: Parser Opts
-opts  = Opts <$> strOption ( metavar "FILENAME"
-                            <> long "schema"
-                            <> short 's'
-                            <> help "swagger JSON schema file to read from"
-                            <> value "swagger.json"
-                            <> showDefault)
-             <*> subparser ( command "generate" (info (generate <**> helper)
+opts  = Opts <$> subparser ( command "generate" (info (generate <**> helper)
                                                       (progDesc "Generate a random request according to Schema"))
                            <> command "validate" (info (validate <**> helper)
                                                        (progDesc "Validate a response against Schema"))
@@ -67,7 +64,8 @@ opts  = Opts <$> strOption ( metavar "FILENAME"
                                                       (progDesc "Run several tests and generate reports")))
   where
     generate :: Parser Command
-    generate = Generate <$> seedP
+    generate = Generate <$> schemaFileP
+                        <*> seedP
                         <*> optional operationIdP
                         <*> option (formatReader requestFormats)
                                    ( metavar (intercalate "|" (map show requestFormats))
@@ -77,6 +75,13 @@ opts  = Opts <$> strOption ( metavar "FILENAME"
                                    <> showDefault )
                         <*> infoP
                         <*> sizeP
+
+    schemaFileP = strOption ( metavar "FILENAME"
+                            <> long "schema"
+                            <> short 's'
+                            <> help "swagger JSON schema file to read from"
+                            <> value "swagger.json"
+                            <> showDefault)
 
     seedP = optional (option auto  ( metavar "N"
                                   <> help "specify the seed for the random generator"
@@ -93,12 +98,14 @@ opts  = Opts <$> strOption ( metavar "FILENAME"
                       <> showDefault )
 
     validate :: Parser Command
-    validate = Validate <$> optional (strArgument ( metavar "FILENAME"
+    validate = Validate <$> schemaFileP
+                        <*> optional (strArgument ( metavar "FILENAME"
                                                   <> help "http response file to read from (default=stdin)" ))
                         <*> operationIdP
 
     request :: Parser Command
-    request = Request <$> seedP
+    request = Request <$> schemaFileP
+                      <*> seedP
                       <*> optional operationIdP
                       <*> option (formatReader requestFormats)
                                  ( metavar (intercalate "|" (map show requestFormats))
@@ -143,48 +150,63 @@ opts  = Opts <$> strOption ( metavar "FILENAME"
     formatReader valids = maybeReader (\s -> find (\f -> show f == s) valids)
 
 main :: IO ()
-main = do Opts swaggerFile cmd <- execParser optsInfo
-          contents <- LBS.readFile swaggerFile
-          case eitherDecode contents of
-            Left e -> die e
-            Right model ->
-              case cmd of
-                Generate mseed mopid reqFmt renderInfo size ->
-                    void $ doGenerate model mseed mopid reqFmt renderInfo size
-                Validate respFile opId ->
-                    do respContents <- maybe LBS.getContents LBS.readFile respFile
-                       case validateResponseBytes respContents model opId of
-                         Left e  -> die $ "invalid: " <> e
-                         Right _ -> putStrLn "valid"
-                Request mseed mopid reqFmt resFmt renderInfo size ->
-                    do  (op, req) <- doGenerate model mseed mopid reqFmt renderInfo size
-                        res <- doHttpRequest req
-                        LTIO.putStrLn $ toLazyText $ printResponse resFmt res
-                        case validateResponseWithOperation res model op of
-                           Left e  -> die $ "invalid: " <> e
-                           Right _ -> putStrLn "valid"
-                Report schemaPath reportPath testsPerOp ->
-                    do createDirectoryIfMissing True reportPath
-                       schemaFiles <- listDirectory schemaPath
-                       forM_ schemaFiles $ \schemaFile ->
-                          when (takeExtension schemaFile == ".json") $ do
-                            let fullPath = schemaPath </> schemaFile
-                                reportPath = reportPath </> schemaFile -<.> "html"
-                            emodel <- eitherDecode <$> LBS.readFile swaggerFile
-                            case emodel of
-                              Left e -> writeErrorReportFile reportPath model e
-                              Right model ->
-                                do reports <- runTests model testsPerOp
-                                   writeReportFile reportPath model reports
+main = do Opts cmd <- customExecParser
+                      (prefs $ disambiguate <> showHelpOnError <> showHelpOnEmpty)
+                      optsInfo
+          case cmd of
+            Generate swaggerFile mseed mopid reqFmt renderInfo size ->
+                do model <- readSwagger swaggerFile
+                   void $ doGenerate model mseed mopid reqFmt renderInfo size
+            Validate swaggerFile respFile opId ->
+                do model <- readSwagger swaggerFile
+                   respContents <- maybe LBS.getContents LBS.readFile respFile
+                   case validateResponseBytes respContents model opId of
+                     Left e  -> die $ "invalid: " <> e
+                     Right _ -> putStrLn "valid"
+            Request swaggerFile mseed mopid reqFmt resFmt renderInfo size ->
+                do model <- readSwagger swaggerFile
+                   (op, req) <- doGenerate model mseed mopid reqFmt renderInfo size
+                   res <- doHttpRequest req
+                   LTIO.putStrLn $ toLazyText $ printResponse resFmt res
+                   case validateResponseWithOperation res model op of
+                      Left e  -> die $ "invalid: " <> e
+                      Right _ -> putStrLn "valid"
+            Report schemasFolder reportFolder nTests size ->
+                do createDirectoryIfMissing True reportFolder
+                   schemaFiles <- listDirectory schemasFolder
+                   forConcurrently_ schemaFiles $ \schemaFile ->
+                      when (takeExtension schemaFile == ".json") $ do
+                        let schemaFilePath = schemasFolder </> schemaFile
+                            reportFile = reportFolder </> schemaFile -<.> "html"
+                        emodel <- eitherDecode <$> LBS.readFile schemaFilePath
+                        case emodel of
+                          Left e -> writeErrorReportFile reportFile $
+                                      "Could not parse " <>  schemaFile <> ": " <> e
+                          Right model ->
+                            do reports <- runTests model nTests size
+                               writeReportFile reportFile model reports
   where
-    optsInfo = info (opts <**> helper)
-                    (fullDesc
-                    <> progDesc "Generate Swagger requests and validates responses"
-                    <> header "Testing tool for Swagger APIs")
+    readSwagger :: FilePath -> IO NormalizedSwagger
+    readSwagger swaggerFile= do contents <- LBS.readFile swaggerFile
+                                case eitherDecode contents of
+                                  Left e  -> die e >> undefined
+                                  Right m -> pure m
 
-    doGenerate :: Swagger -> Maybe Seed -> Maybe OperationId -> Format -> Bool -> Int -> IO (Operation, HttpRequest)
+    optsInfo = info (opts <**> helper)
+                    ( fullDesc
+                    <> progDesc "Execute one of the commands available depending on your needs"
+                    <> header "Property-based testing tool for Swagger APIs"
+                    <> footer "Run `COMMAND --help` to get command specific options help")
+
+    doGenerate :: NormalizedSwagger
+               -> Maybe Seed
+               -> Maybe OperationId
+               -> Format
+               -> Bool
+               -> Size
+               -> IO (Operation, HttpRequest)
     doGenerate model mseed mopid reqFmt renderInfo size =
-        do seed <- maybe randomIO pure mseed
+        do seed <- maybe (abs <$> randomIO) pure mseed
            let (op, req) = generateRequest seed size model mopid
            when renderInfo $
               TIO.putStrLn $ "# seed=" <> T.pack (show seed) <> maybe "" (\i -> " id=" <> i) (op ^. operationId)

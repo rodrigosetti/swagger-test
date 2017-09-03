@@ -32,6 +32,7 @@ import           Data.Scientific
 import           Data.Swagger
 import           Data.Swagger.Internal      (SwaggerKind (..))
 import qualified Data.Text                  as T
+import Data.Text.Encoding
 import qualified Data.Vector                as V
 import           Network.HTTP.Types
 import           System.FilePath.Posix      ((</>))
@@ -43,15 +44,15 @@ import           Test.Swagger.Types
 
 -- |Given a swagger.json schema, produce a Request that complies with the schema.
 --  The return type is a random Request (in the IO monad because it's random).
-generateRequest :: Seed -> Size -> Swagger -> Maybe OperationId -> (Operation, HttpRequest)
+generateRequest :: Seed -> Size -> NormalizedSwagger -> Maybe OperationId -> (Operation, HttpRequest)
 generateRequest seed size model mopid =
   let gen = mkQCGen seed
    in unGen (requestGenerator model mopid) gen size
 
 -- Random Request generator
-requestGenerator :: Swagger -> Maybe OperationId -> Gen (Operation, HttpRequest)
-requestGenerator s' mopid =
- do let s = resolveReferences s'
+requestGenerator :: NormalizedSwagger -> Maybe OperationId -> Gen (Operation, HttpRequest)
+requestGenerator ns mopid =
+ do let s = getSwagger ns
         baseP = fromMaybe "/" $ s ^. basePath
         mHost = s ^. host
 
@@ -157,7 +158,7 @@ requestGenerator s' mopid =
   applyPathTemplating ((key, sc, ae):ts) p =
     do let f = sc ^. format
        v <- (mconcat . jsonToText f CollectionSSV) <$> paramGen sc ae
-       applyPathTemplating ts $ T.replace ("{" <> key <> "}") v p
+       applyPathTemplating ts $ T.replace ("{" <> key <> "}") (urlEncodeText v) p
 
   genQuery :: [(T.Text, ParamSchema k, Bool)] -> Gen QueryText
   genQuery []                  = pure []
@@ -167,6 +168,9 @@ requestGenerator s' mopid =
        let this = (\x -> (key, if T.null x then Nothing else Just x)) <$> v
        rest <- genQuery ts
        pure $ this <> rest
+
+  urlEncodeText :: T.Text -> T.Text
+  urlEncodeText = decodeUtf8 . urlEncode False . encodeUtf8
 
   paramSchemaAndAllowEmpty :: ParamLocation -> Param -> Maybe (T.Text, ParamSchema 'SwaggerKindParamOtherSchema, Bool)
   paramSchemaAndAllowEmpty loc Param { _paramName = n, _paramSchema = ParamOther pos@ParamOtherSchema {} }

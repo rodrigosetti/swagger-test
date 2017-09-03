@@ -47,36 +47,36 @@ type ValidationResult = Either String ()
 
 -- |Validate a response, from a particular operation id, (encoded in a byte-string)
 -- against a Swagger schema
-validateResponseBytes :: LBS.ByteString -> Swagger -> OperationId -> ValidationResult
+validateResponseBytes :: LBS.ByteString -> NormalizedSwagger -> OperationId -> ValidationResult
 validateResponseBytes input s opId =
   case parseResponse input of
     Left e         -> Left $ "could not parse HTTP response: " <> e
     Right response -> validateResponse response s opId
 
 -- |Validate a response, from a particular operation id against a Swagger schema
-validateResponse:: HttpResponse -> Swagger -> OperationId -> ValidationResult
+validateResponse:: HttpResponse -> NormalizedSwagger -> OperationId -> ValidationResult
 validateResponse res s opid =
     case maybeOp of
       Nothing        -> Left $ "operation not defined: " <> T.unpack opid
       Just operation -> validateResponseWithOperation res s operation
   where
-   maybeOp = listToMaybe $ listify operationMatches s
+   maybeOp = listToMaybe $ listify operationMatches $ getSwagger s
 
    operationMatches :: Operation -> Bool
    operationMatches o = Just opid == o ^. operationId
 
 -- |Validate a response, from a particular operation against a Swagger schema
-validateResponseWithOperation :: HttpResponse -> Swagger -> Operation -> ValidationResult
-validateResponseWithOperation res s' operation =
+validateResponseWithOperation :: HttpResponse -> NormalizedSwagger -> Operation -> ValidationResult
+validateResponseWithOperation res ns operation =
         do let code = statusCode $ responseStatus res
                msr = M.lookup code (operation ^. responses.responses)
                     <|> operation ^. responses.default_
 
-           sr <- maybe (fail $ "unspecified status code: " <> show code) pure (msr >>= refToMaybe)
+           sr <- maybe (Left $ "unspecified status code: " <> show code) pure (msr >>= refToMaybe)
 
            -- validate headers
            forM_ (M.toList $ sr ^. headers) $ uncurry $ \k h ->
-                do hv <- maybe (fail $ "expected header: " <> T.unpack k) pure
+                do hv <- maybe (Left $ "expected header: " <> T.unpack k) pure
                               $ lookup (mk k) $ responseHeaders res
                    validateWithParamSchema' (toJSON hv) $ h ^. paramSchema
 
@@ -84,10 +84,11 @@ validateResponseWithOperation res s' operation =
            -- validate body
            case (sr ^. schema >>= refToMaybe, responseBody res) of
              (Nothing, Nothing) -> pure () -- no response expected, got no response (OK)
-             (Just _, Nothing) -> fail $ "expected response body: " <> T.unpack (sr ^. description)
-             (Nothing, Just _) -> fail "unexpected response body"
+             (Nothing, Just bs) | LBS.null bs -> pure () -- no response expected, got no response (OK)
+             (Just _, Nothing) -> Left $ "expected response body: " <> T.unpack (sr ^. description)
+             (Nothing, Just _) -> Left "unexpected response body"
              (Just rs, Just bs) ->
-                do jsonMime <- maybe (fail "unexpected!") pure $ parseAccept "application/json"
+                do jsonMime <- maybe (Left "unexpected!") pure $ parseAccept "application/json"
 
                    -- TODO: should default be JSON?
                    let respMime = fromMaybe jsonMime
@@ -97,7 +98,7 @@ validateResponseWithOperation res s' operation =
                    let mimes = fromMaybe (s ^. produces) $ operation ^. produces
 
                    -- find one mime that matches
-                   matchedMime <- maybe (fail "unexpected content-type") pure
+                   matchedMime <- maybe (Left "unexpected content-type") pure
                                 $ find (matches respMime) (getMimeList mimes)
 
                    -- If JSON, validate
@@ -107,7 +108,7 @@ validateResponseWithOperation res s' operation =
                            validateWithSchema' b rs
 
  where
-   s = resolveReferences s'
+   s = getSwagger ns
 
    -- TODO: make it support patterns
    cfg = defaultConfig

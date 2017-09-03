@@ -1,5 +1,5 @@
 name:                swagger-test
-version:             0.1.0
+version:             0.2.0
 synopsis:            Testing of Swagger APIs
 description:         This package provides a library and executable tool
                      that supports testing APIs specified with Swagger. It
@@ -25,12 +25,14 @@ library
   exposed-modules:     Test.Swagger
                      , Test.Swagger.Gen
                      , Test.Swagger.Print
+                     , Test.Swagger.Report
                      , Test.Swagger.Request
                      , Test.Swagger.Types
                      , Test.Swagger.Validate
   build-depends:       base >= 4.7 && < 5
                      , QuickCheck == 2.10.*
                      , aeson
+                     , async
                      , attoparsec
                      , binary
                      , blaze-html
@@ -57,15 +59,17 @@ executable swagger-test
   main-is:             Main.hs
   ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N
   build-depends:       base
+                     , aeson
+                     , async
                      , bytestring
                      , directory
-                     , swagger-test
+                     , filepath
                      , lens
-                     , text
                      , optparse-applicative
-                     , swagger2
-                     , aeson
                      , random
+                     , swagger-test
+                     , swagger2
+                     , text
   default-language:    Haskell2010
 
 source-repository head

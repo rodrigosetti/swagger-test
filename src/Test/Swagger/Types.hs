@@ -14,12 +14,13 @@ of swagger-test.
 module Test.Swagger.Types (FullyQualifiedHost
                           , Seed
                           , Size
+                          , NormalizedSwagger
+                          , getSwagger
                           , OperationId
                           , HttpHeader
                           , Headers
                           , HttpRequest(..)
                           , HttpResponse(..)
-                          , resolveReferences
                           , refToMaybe) where
 
 import           Control.Arrow
@@ -30,7 +31,7 @@ import qualified Data.HashMap.Lazy    as HM
 import qualified Data.Text            as T
 import           Data.Text.Encoding
 import           Network.HTTP.Types
-import           Control.Lens ((^.))
+import           Control.Lens hiding ((.=))
 import           Data.Generics
 import qualified Data.HashMap.Strict.InsOrd as M
 import           Data.Monoid                ((<>))
@@ -52,7 +53,7 @@ data HttpRequest = HttpRequest { requestHost    :: Maybe FullyQualifiedHost
                                , requestQuery   :: QueryText
                                , requestHeaders :: Headers
                                , requestBody    :: Maybe LBS.ByteString }
-                      deriving (Show)
+                      deriving (Eq, Show)
 
 instance ToJSON HttpRequest where
   toJSON r = object [ "host" .= toJSON (requestHost r)
@@ -68,7 +69,7 @@ data HttpResponse = HttpResponse { responseHttpVersion :: HttpVersion
                                  , responseStatus      :: Status
                                  , responseHeaders     :: Headers
                                  , responseBody        :: Maybe LBS.ByteString }
-                      deriving (Show)
+                      deriving (Eq, Show)
 
 instance ToJSON HttpResponse where
   toJSON r = object [ "version" .= object [ "major" .= toJSON (httpMajor ver)
@@ -82,20 +83,29 @@ instance ToJSON HttpResponse where
       st = responseStatus r
       headersMap = M.fromList $ first original <$> responseHeaders r
 
+newtype NormalizedSwagger = Normalized { getSwagger :: Swagger }
 
--- |Replace all references with inlines
-resolveReferences :: Swagger -> Swagger
-resolveReferences s = everywhere' (mkT resolveSchema) $ everywhere' (mkT resolveParam) s
-  -- NOTE: we need to use the top-down everywhere variant for this to work as intented
-  where
-    resolveParam :: Referenced Param -> Referenced Param
-    resolveParam i@Inline {} = i
-    resolveParam (Ref (Reference r))  = maybe (error $ "undefied schema: " <> T.unpack r) Inline
-                                      $ M.lookup r $ s ^. parameters
-    resolveSchema :: Referenced Schema -> Referenced Schema
-    resolveSchema i@Inline {} = i
-    resolveSchema (Ref (Reference r)) = maybe (error $ "undefied schema: " <> T.unpack r) Inline
-                                      $ M.lookup r $ s ^. definitions
+instance FromJSON NormalizedSwagger where
+
+  parseJSON = fmap (Normalized . resolveReferences . prependBase) . parseJSON
+    where
+      prependBase :: Swagger -> Swagger
+      prependBase s =
+        maybe s (`prependPath` s) (s ^. basePath) & basePath .~ Nothing
+
+      -- |Replace all references with inlines
+      resolveReferences :: Swagger -> Swagger
+      resolveReferences s = everywhere' (mkT resolveSchema) $ everywhere' (mkT resolveParam) s
+        -- NOTE: we need to use the top-down everywhere variant for this to work as intented
+        where
+          resolveParam :: Referenced Param -> Referenced Param
+          resolveParam i@Inline {} = i
+          resolveParam (Ref (Reference r))  = maybe (error $ "undefied schema: " <> T.unpack r) Inline
+                                            $ M.lookup r $ s ^. parameters
+          resolveSchema :: Referenced Schema -> Referenced Schema
+          resolveSchema i@Inline {} = i
+          resolveSchema (Ref (Reference r)) = maybe (error $ "undefied schema: " <> T.unpack r) Inline
+                                            $ M.lookup r $ s ^. definitions
 
 -- |Transform a reference into a Just value if is inline, Nothing, otherwise
 refToMaybe :: Referenced a -> Maybe a

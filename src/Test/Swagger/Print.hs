@@ -91,7 +91,7 @@ printResponse FormatHttp r =
   in
        fromString ("HTTP/" <> show (httpMajor ver) <> "." <> show (httpMinor ver) <> " ")
     <> fromString (show (statusCode st) <> " ")
-    <> fromUtf8Bytestring (statusMessage st)
+    <> fromUtf8BytestringLn (statusMessage st)
     <> mconcat ((\(k,v) -> fromTextLn $ original k <> ": " <> v) <$> headers)
     <> case responseBody r of
          Just b  -> fromText "\n" <> fromUtf8Bytestring (LBS.toStrict b)
@@ -99,6 +99,9 @@ printResponse FormatHttp r =
 
 fromUtf8Bytestring :: BS.ByteString -> Builder
 fromUtf8Bytestring = fromText . decodeUtf8
+
+fromUtf8BytestringLn :: BS.ByteString -> Builder
+fromUtf8BytestringLn = fromTextLn . decodeUtf8
 
 fromTextLn :: T.Text -> Builder
 fromTextLn t = fromText t <> fromText "\n"
