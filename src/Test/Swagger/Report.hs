@@ -106,10 +106,8 @@ report model reps =
           totalFailures = length $ filter isFailure reps
 
       dl ! class_ "header-stats" $ do
-          dt "total number of tests"
-          dd $ toHtml total
-          dt "total number of failures"
-          dd $ toHtml totalFailures
+          dtdd "total number of tests" total
+          dtdd "total number of failures" totalFailures
 
       -- group reports by operations
       let reportGroups = groupBy (\x y -> reportOperation x == reportOperation y)
@@ -129,49 +127,83 @@ report model reps =
                      failing = filter isFailure gr
                      totalFailures' = length failing
                      opid = fromMaybe "" $ op ^. operationId
-                 h3 ! A.id (toValue opid) $ "Operation " >> toHtml opid
+                 h3 ! A.id (toValue opid)
+                    $ a ! href ("#" <> toValue opid)
+                    $ "Operation " <> toHtml opid
                  dl ! class_ "operation-header" $ do
-                   forM_ (op ^. W.summary) $ \s -> do
-                     dt "summary"
-                     dd $ toHtml s
-                   forM_ (op ^. description) $ \d -> do
-                     dt "description"
-                     dd $ toHtml d
-                   unless (S.null $ op ^. tags) $ do
-                     dt "tags"
-                     dd $ toHtml $ T.intercalate " ," $ S.toList $ op ^. tags
-                   forM_ (op ^. deprecated) $ \d -> do
-                     dt "deprecated"
-                     dd $ toHtml d
-                   dt "number of tests"
-                   dd $ toHtml total'
-                   dt "number of failures"
-                   dd $ toHtml totalFailures'
+                   forM_ (op ^. W.summary) $ \s ->
+                     unless (T.null s)
+                       $ dtdd "summary" s
+                   forM_ (op ^. description) $ \d ->
+                     unless (T.null d)
+                        $ dtdd "description" d
+                   unless (S.null $ op ^. tags) $
+                     dtdd "tags"
+                         $ T.intercalate " ," $ S.toList $ op ^. tags
+                   forM_ (op ^. deprecated) $ \d ->
+                     dtdd "deprecated" d
+                   dtdd "number of tests" total'
+                   dtdd "number of failures" totalFailures'
                  unless (null failing) $
                    H.div ! class_ "failures" $ do
-                     h3 "Failures"
+                     h3 "Failure details"
                      forM_ failing $ \r -> do
-                       dl ! class_ "test-details" $ do
-                         dt "seed"
-                         dd $ toHtml $ reportSeed r
-                         dt "error"
-                         dt $ either toHtml (const "none") $ reportResult r
+                       let thisId = toValue opid <> toValue (reportSeed r)
+                       h4 ! A.id thisId $
+                         a ! href ("#" <> thisId)
+                         $ "Seed " <> toHtml (reportSeed r)
                        H.div ! class_ "http-request" $ do
-                         h4 "HTTP Request"
-                         pre $ toHtml $ printRequest FormatHttp $ reportRequest r
+                         let thisId' = toValue opid <> toValue (reportSeed r) <> "-req"
+                         h5 ! A.id thisId' $
+                           a ! href ("#" <> thisId')
+                           $ "HTTP Request"
+                         code $ pre $ toHtml $ printRequest FormatHttp $ reportRequest r
                        H.div ! class_ "http-response" $ do
-                         h4 "HTTP Response"
-                         pre $ toHtml $ printResponse FormatHttp $ reportResponse r
+                         let thisId' = toValue opid <> toValue (reportSeed r) <> "-res"
+                         h5 ! A.id thisId' $
+                           a ! href ("#" <> thisId')
+                           $ "HTTP Response"
+                         code $ pre $ toHtml $ printResponse FormatHttp $ reportResponse r
+                       let thisId' = toValue opid <> toValue (reportSeed r) <> "-err"
+                       h5 ! A.id thisId' $
+                         a ! href ("#" <> thisId')
+                         $ "Error"
+                       pre $ either toHtml (const "none") $ reportResult r
 
 
+dtdd :: (ToMarkup a) => Html -> a -> Html
+dtdd x y = dt x >> dd (toHtml y)
 
 reportHeader :: NormalizedSwagger -> Html -> Html
 reportHeader model inner =
   docTypeHtml $ do
        let s = getSwagger model
            schemaTitle = toHtml $ s ^. info . W.title
-       H.head $
+       H.head $ do
            H.title schemaTitle
+           H.style "dl {\
+                    \  margin: 0;\
+                    \}\
+                    \dl:after {\
+                    \  content: '.';\
+                    \  display: block;\
+                    \  clear: both;\
+                    \  visibility: hidden;\
+                    \  overflow: hidden;\
+                    \  height: 0;\
+                    \}\
+                    \dt {\
+                    \  font-weight: bold;\
+                    \ text-align: right;\
+                    \  float: left;\
+                    \  clear: left;\
+                    \  width: 15%;\
+                    \  margin-bottom: 1em;\
+                    \}\
+                    \dd {\
+                    \  margin-left: 17%;\
+                    \  margin-bottom: 1em;\
+                    \}"
        body $ do
            h1 schemaTitle
            forM_ (s ^. info.description) $ \d ->
