@@ -131,7 +131,7 @@ requestGenerator ns mopid =
                  <>  [("Content-Type", fst <$> maybeMimeAndBody)]
 
     -- use scheme from operation, if defined, or from global
-    scheme <- elements $ fromMaybe [Https] (operation ^. schemes <|> s ^. schemes)
+    scheme <- elements $ fromMaybe [schemeForPort $ view port =<< mHost] (operation ^. schemes <|> s ^. schemes)
     pure ( operation
           , HttpRequest (buildHost scheme <$> mHost)
                         method
@@ -141,6 +141,10 @@ requestGenerator ns mopid =
                         (snd <$> maybeMimeAndBody) )
 
  where
+  schemeForPort (Just 80) = Http
+  schemeForPort (Just 443) = Https
+  schemeForPort _ = Http
+
   buildHost :: Scheme -> Host -> String
   buildHost sc h = schemeToHttpPrefix sc <> (h ^. name) <> maybe "" ((':':) . show) (h ^. port)
 
