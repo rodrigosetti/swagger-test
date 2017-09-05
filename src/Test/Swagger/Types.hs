@@ -24,18 +24,19 @@ module Test.Swagger.Types (FullyQualifiedHost
                           , refToMaybe) where
 
 import           Control.Arrow
+import           Control.Lens               hiding ((.=))
 import           Data.Aeson
-import qualified Data.ByteString.Lazy as LBS
+import qualified Data.ByteString.Lazy       as LBS
 import           Data.CaseInsensitive
-import qualified Data.HashMap.Lazy    as HM
-import qualified Data.Text            as T
-import           Data.Text.Encoding
-import           Network.HTTP.Types
-import           Control.Lens hiding ((.=))
 import           Data.Generics
+import qualified Data.HashMap.Lazy          as HM
 import qualified Data.HashMap.Strict.InsOrd as M
 import           Data.Monoid                ((<>))
-import           Data.Swagger
+import           Data.Swagger               hiding (prependPath)
+import qualified Data.Text                  as T
+import           Data.Text.Encoding
+import           Network.HTTP.Types
+import           System.FilePath.Posix
 
 -- |The FullyQualifiedHost contains the scheme (i.e. http://), hostname and port.
 type FullyQualifiedHost = String
@@ -106,6 +107,9 @@ instance FromJSON NormalizedSwagger where
           resolveSchema i@Inline {} = i
           resolveSchema (Ref (Reference r)) = maybe (error $ "undefied schema: " <> T.unpack r) Inline
                                             $ M.lookup r $ s ^. definitions
+
+prependPath :: FilePath -> Swagger -> Swagger
+prependPath path = paths %~ M.mapKeys (\x -> path </> dropWhile (== '/') x)
 
 -- |Transform a reference into a Just value if is inline, Nothing, otherwise
 refToMaybe :: Referenced a -> Maybe a
