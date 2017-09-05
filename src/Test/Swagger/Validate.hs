@@ -78,8 +78,9 @@ validateResponseWithOperation res ns operation =
            forM_ (M.toList $ sr ^. headers) $ uncurry $ \k h ->
                 do hv <- maybe (Left $ "expected header: " <> T.unpack k) pure
                               $ lookup (mk k) $ responseHeaders res
-                   validateWithParamSchema' (toJSON hv) $ h ^. paramSchema
-
+                   let jhv = fromMaybe (toJSON hv) $ decodeStrict $ encodeUtf8 hv
+                   withPrefix ("invalid " <> T.unpack k <> " header value: " <> T.unpack hv)
+                              $ validateWithParamSchema' jhv $ h ^. paramSchema
 
            -- validate body
            case (sr ^. schema >>= refToMaybe, responseBody res) of
@@ -104,14 +105,18 @@ validateResponseWithOperation res ns operation =
                    -- If JSON, validate
                    -- TODO: validate other non-JSON content-types
                    when (matches matchedMime jsonMime) $
-                        do b <- eitherDecode bs
-                           validateWithSchema' b rs
+                        do b <- withPrefix "Could not parse body" $ eitherDecode bs
+                           withPrefix "invalid body" $ validateWithSchema' b rs
 
  where
    s = getSwagger ns
 
    -- TODO: make it support patterns
    cfg = defaultConfig
+
+   withPrefix :: String -> Either String a -> Either String a
+   withPrefix p (Left e) = Left $ p <> ": " <> e
+   withPrefix _ v = v
 
    validateWithSchema' :: Value -> Schema -> ValidationResult
    validateWithSchema' v = resultToEither . runValidation (validateWithSchema v) cfg
