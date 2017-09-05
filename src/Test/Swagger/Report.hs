@@ -1,5 +1,6 @@
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-|
 Module      : Test.Swagger.Report
 Description : Exposes
@@ -16,15 +17,18 @@ module Test.Swagger.Report ( TestReport(..)
                            , runTests) where
 
 import           Control.Concurrent.Async
+import           Control.Exception
 import           Control.Lens                  ((^.))
 import           Control.Monad
 import           Data.Aeson                    as J
 import qualified Data.ByteString.Lazy          as LBS
 import           Data.List
 import           Data.Maybe
+import           Data.Monoid
 import qualified Data.Set                      as S
 import           Data.Swagger                  as W
 import qualified Data.Text                     as T
+import           Network.HTTP.Client
 import           System.Random
 import           Test.Swagger.Gen
 import           Test.Swagger.Print
@@ -34,14 +38,13 @@ import           Test.Swagger.Validate
 import           Text.Blaze.Html.Renderer.Utf8
 import           Text.Blaze.Html5              as H
 import           Text.Blaze.Html5.Attributes   as A
-import Data.Monoid
 
 
 -- |A description of a particular test run.
 data TestReport = TestReport { reportSeed      :: Seed
                              , reportOperation :: Operation
                              , reportRequest   :: HttpRequest
-                             , reportResponse  :: HttpResponse
+                             , reportResponse  :: Maybe HttpResponse
                              , reportResult    :: ValidationResult }
                      deriving Eq
 
@@ -51,7 +54,7 @@ instance Ord TestReport where
           TestReport { reportSeed=s2, reportOperation=op2} =
     case (op1 ^. operationId, op2 ^. operationId) of
       (Nothing, Nothing) -> compare s1 s2
-      (x, y) -> compare x y
+      (x, y)             -> compare x y
 
 -- |Predicate that tells whether or not a report is of a successful validation
 isSuccessful :: TestReport -> Bool
@@ -74,9 +77,10 @@ runTests model n siz =
     replicateConcurrently n $
       do seed <- abs <$> randomIO
          let (op, req) = generateRequest seed siz model Nothing
-         res <- doHttpRequest req
-         let vr = validateResponseWithOperation res model op
-         pure $ TestReport seed op req res vr
+         catch (do res <- doHttpRequest req
+                   let vr = validateResponseWithOperation res model op
+                   pure $ TestReport seed op req (Just res) vr)
+               (\(ex :: HttpException) -> pure $ TestReport seed op req Nothing (Left $ show ex))
 
 -- |Write a report file containing just a single error message. This is to be
 -- used if we find an error before being able to run any test (parsing schema,
@@ -163,7 +167,9 @@ report model reps =
                          h5 ! A.id thisId' $
                            a ! href ("#" <> thisId')
                            $ "HTTP Response"
-                         code $ pre $ toHtml $ printResponse FormatHttp $ reportResponse r
+                         code $ pre $ case reportResponse r of
+                                       Just res -> toHtml $ printResponse FormatHttp res
+                                       Nothing -> "No Response"
                        let thisId' = toValue opid <> toValue (reportSeed r) <> "-err"
                        h5 ! A.id thisId' $
                          a ! href ("#" <> thisId')
