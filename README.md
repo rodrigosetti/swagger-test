@@ -7,7 +7,8 @@ of [swagger](https://swagger.io) APIs.
 It basically allow you to approximate the computation of the following
 proposition:
 
-> valid(response, schema), response = execute(request), ∀ request ∈ schema
+![](https://latex.codecogs.com/png.latex?\forall&space;\,&space;input&space;\in&space;\text{API}&space;\,&space;:&space;\underset{API}{valid}(input)&space;\Rightarrow&space;\underset{API}{valid}(output)&space;\\&space;\text{where}&space;\\&space;output&space;=&space;\underset{API}{request}(input))
+
 
 Which translates to:
 
