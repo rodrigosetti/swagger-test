@@ -1,5 +1,5 @@
 name:                swagger-test
-version:             0.2.3
+version:             0.2.4
 synopsis:            Testing of Swagger APIs
 description:         This package provides a library and executable tool
                      that supports testing APIs specified with Swagger. It
@@ -29,6 +29,7 @@ library
                      , Test.Swagger.Request
                      , Test.Swagger.Types
                      , Test.Swagger.Validate
+  other-modules:     Paths_swagger_test
   build-depends:       base >= 4.7 && < 5
                      , QuickCheck == 2.10.*
                      , aeson
@@ -57,6 +58,7 @@ library
 executable swagger-test
   hs-source-dirs:      app
   main-is:             Main.hs
+  other-modules:       Paths_swagger_test
   ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N
   build-depends:       base
                      , aeson

@@ -17,12 +17,14 @@ import           Data.Aeson
 import qualified Data.ByteString.Lazy     as LBS
 import           Data.List
 import           Data.Semigroup           ((<>))
-import           Data.Swagger             hiding (Format, info)
+import           Data.Swagger             hiding (Format, info, version)
 import qualified Data.Text                as T
 import qualified Data.Text.IO             as TIO
 import           Data.Text.Lazy.Builder
 import qualified Data.Text.Lazy.IO        as LTIO
+import           Data.Version             (showVersion)
 import           Options.Applicative
+import           Paths_swagger_test       (version)
 import           System.Directory
 import           System.Exit              (die)
 import           System.FilePath.Posix
@@ -195,7 +197,7 @@ main = do Opts cmd <- customExecParser
     optsInfo = info (opts <**> helper)
                     ( fullDesc
                     <> progDesc "Execute one of the commands available depending on your needs"
-                    <> header "Property-based testing tool for Swagger APIs"
+                    <> header ("Property-based testing tool for Swagger APIs - v. " <> showVersion version)
                     <> footer "Run `COMMAND --help` to get command specific options help")
 
     doGenerate :: NormalizedSwagger

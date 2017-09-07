@@ -13,18 +13,18 @@ response.
 module Test.Swagger.Request (doHttpRequest) where
 
 import           Control.Arrow
-import qualified Data.ByteString.Lazy as LBS
+import qualified Data.ByteString.Lazy    as LBS
 import           Data.CaseInsensitive
 import           Data.Maybe
 import           Data.Monoid
-import qualified Data.Text            as T
+import qualified Data.Text               as T
 import           Data.Text.Encoding
 import           Network.HTTP.Client
+import           Network.HTTP.Client.TLS
 import           Network.HTTP.Types
-import Network.HTTP.Client.TLS
-import           Test.Swagger.Types   hiding (requestBody, requestHeaders,
-                                       responseBody, responseHeaders,
-                                       responseStatus)
+import           Test.Swagger.Types      hiding (requestBody, requestHeaders,
+                                          responseBody, responseHeaders,
+                                          responseStatus)
 
 -- |Executes the HTTP request and returns the HTTP response
 doHttpRequest :: HttpRequest -> IO HttpResponse

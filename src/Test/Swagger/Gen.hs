@@ -29,7 +29,7 @@ import           Data.List                  (partition)
 import           Data.Maybe
 import           Data.Monoid                ((<>))
 import           Data.Scientific
-import           Data.Swagger
+import           Data.Swagger hiding (version)
 import           Data.Swagger.Internal      (SwaggerKind (..))
 import qualified Data.Text                  as T
 import Data.Text.Encoding
@@ -40,6 +40,8 @@ import           Test.QuickCheck            hiding (Fixed)
 import           Test.QuickCheck.Gen        (unGen)
 import           Test.QuickCheck.Random
 import           Test.Swagger.Types
+import           Paths_swagger_test      (version)
+import           Data.Version            (showVersion)
 
 
 -- |Given a swagger.json schema, produce a Request that complies with the schema.
@@ -129,6 +131,7 @@ requestGenerator ns mopid =
                  <$> ((mk . fst &&& snd) <$> randomHeaders)
                  <>  [("Host", (T.pack . (^. name)) <$> mHost)]
                  <>  [("Content-Type", fst <$> maybeMimeAndBody)]
+                 <>  [("User-Agent", Just $ "swagger-test/" <> T.pack (showVersion version))]
 
     -- use scheme from operation, if defined, or from global
     scheme <- elements $ fromMaybe [schemeForPort $ view port =<< mHost] (operation ^. schemes <|> s ^. schemes)
