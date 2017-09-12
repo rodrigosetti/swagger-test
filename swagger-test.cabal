@@ -1,5 +1,5 @@
 name:                swagger-test
-version:             0.2.5
+version:             0.2.6
 synopsis:            Testing of Swagger APIs
 description:         This package provides a library and executable tool
                      that supports testing APIs specified with Swagger. It
@@ -52,6 +52,7 @@ library
                      , swagger2 >= 2.1.5 && < 3
                      , syb
                      , text
+                     , time
                      , unordered-containers
                      , vector
 

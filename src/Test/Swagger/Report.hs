@@ -29,6 +29,7 @@ import           Data.Monoid
 import qualified Data.Set                      as S
 import           Data.Swagger                  as W
 import qualified Data.Text                     as T
+import           Data.Time
 import           Network.HTTP.Client
 import           System.Random
 import           Test.Swagger.Gen
@@ -87,26 +88,28 @@ runTests model n siz =
 -- used if we find an error before being able to run any test (parsing schema,
 -- etc.)
 writeErrorReportFile :: FilePath -> String -> IO ()
-writeErrorReportFile fp = LBS.writeFile fp . renderHtml . errorReport "Error"
+writeErrorReportFile fp err =
+  do now <- getCurrentTime
+     LBS.writeFile fp $ renderHtml $ reportHeader "Error" now
+          $ do h1 "Error Generating Report"
+               p ! class_ "error" $ toHtml err
 
 -- |Write a report file containing a header description about the 'Swagger'
 -- schema, then a section about each 'Operation', how many tests were performed,
 -- general stats (# failures/successes) and request/response details for failures.
 writeReportFile :: FilePath -> NormalizedSwagger -> [TestReport] -> IO ()
-writeReportFile fp m = LBS.writeFile fp . renderHtml . report m
+writeReportFile fp m reps =
+  do now <- getCurrentTime
+     LBS.writeFile fp $ renderHtml $ report m reps now
 
-errorReport :: String -> String -> Html
-errorReport tit err =
-  docTypeHtml $ do
-       H.head $
-           H.title $ toHtml tit
-       body $ do
-           h1 $ toHtml tit
-           p ! class_ "error" $ toHtml err
+report :: FormatTime t => NormalizedSwagger -> [TestReport] -> t -> Html
+report model reps t =
+ do let s = getSwagger model
+        schemaTitle = toHtml $ s ^. info . W.title
+    reportHeader schemaTitle t $ do
+      forM_ (s ^. info.description) $ \d ->
+         p ! class_ "schema-description" $ toHtml d
 
-report :: NormalizedSwagger -> [TestReport] -> Html
-report model reps =
-    reportHeader model $ do
       let total = length reps
           totalFailures = length $ filter isFailure reps
 
@@ -139,9 +142,9 @@ report model reps =
                     $ a ! href ("#" <> toValue opid)
                     $ "Operation " <> toHtml opid
                  dl ! class_ "operation-header" $ do
-                   forM_ (op ^. W.summary) $ \s ->
-                     unless (T.null s)
-                       $ dtdd "summary" s
+                   forM_ (op ^. W.summary) $ \x ->
+                     unless (T.null x)
+                       $ dtdd "summary" x
                    forM_ (op ^. description) $ \d ->
                      unless (T.null d)
                         $ dtdd "description" d
@@ -184,13 +187,11 @@ report model reps =
 dtdd :: (ToMarkup a) => Html -> a -> Html
 dtdd x y = dt x >> dd (toHtml y)
 
-reportHeader :: NormalizedSwagger -> Html -> Html
-reportHeader model inner =
+reportHeader :: FormatTime t => Html -> t -> Html -> Html
+reportHeader tit t inner =
   docTypeHtml $ do
-       let s = getSwagger model
-           schemaTitle = toHtml $ s ^. info . W.title
        H.head $ do
-           H.title schemaTitle
+           H.title tit
            H.style "dl {\
                     \  margin: 0;\
                     \}\
@@ -221,7 +222,7 @@ reportHeader model inner =
                     \  color: red;\
                     \}"
        body $ do
-           h1 schemaTitle
-           forM_ (s ^. info.description) $ \d ->
-             p ! class_ "schema-description" $ toHtml d
+           h1 tit
+           p $ do "Report generated: "
+                  H.time $ toHtml $ formatTime defaultTimeLocale rfc822DateFormat t
            H.div ! class_ "report-body" $ inner

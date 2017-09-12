@@ -284,11 +284,9 @@ merge v _                     = v
 
 -- |Generate a JSON from a schema
 genJSON :: Schema -> Gen Value
-genJSON Schema { _schemaAllOf = Just ss } | not (null ss) =
-  do let ss' = catMaybes $ refToMaybe <$> ss
-     jsons <- shuffle =<< mapM genJSON ss'
-     n <- choose (1, length jsons)
-     pure $ foldl1 merge $ take n jsons
+genJSON Schema { _schemaAllOf = Just ss } =
+  let ss' = catMaybes $ refToMaybe <$> ss
+  in foldl merge Null <$> mapM genJSON ss'
 
 genJSON s@Schema { _schemaParamSchema = ParamSchema { _paramSchemaType = SwaggerObject } } =
   do let props = catMaybes $ (\i -> (fst i,) <$> refToMaybe (snd i)) <$> M.toList (s ^. properties)
