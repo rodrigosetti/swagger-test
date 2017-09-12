@@ -12,6 +12,7 @@ Portability : POSIX
 -}
 module Test.Swagger.Report ( TestReport(..)
                            , isSuccessful
+                           , isFailure
                            , writeReportFile
                            , writeErrorReportFile
                            , runTests) where

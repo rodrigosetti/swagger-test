@@ -180,6 +180,7 @@ main = do Opts cmd <- customExecParser
                       when (takeExtension schemaFile == ".json") $ do
                         let schemaFilePath = schemasFolder </> schemaFile
                             reportFile = reportFolder </> schemaFile -<.> "html"
+                            reportDataFile = reportFolder </> schemaFile -<.> "results.json"
                         emodel <- eitherDecode <$> LBS.readFile schemaFilePath
                         case emodel of
                           Left e -> writeErrorReportFile reportFile $
@@ -187,6 +188,7 @@ main = do Opts cmd <- customExecParser
                           Right model ->
                             do reports <- runTests model nTests size
                                writeReportFile reportFile model reports
+                               writeReportDataFile reportDataFile reports
   where
     readSwagger :: FilePath -> IO NormalizedSwagger
     readSwagger swaggerFile= do contents <- LBS.readFile swaggerFile
@@ -199,6 +201,12 @@ main = do Opts cmd <- customExecParser
                     <> progDesc "Execute one of the commands available depending on your needs"
                     <> header ("Property-based testing tool for Swagger APIs - v. " <> showVersion version)
                     <> footer "Run `COMMAND --help` to get command specific options help")
+
+    -- |Write a json of the structure data of the report
+    writeReportDataFile :: FilePath -> [TestReport] -> IO ()
+    writeReportDataFile fp reports =
+      let failures = filter isFailure reports
+      in LBS.writeFile fp $ encode failures
 
     doGenerate :: NormalizedSwagger
                -> Maybe Seed
