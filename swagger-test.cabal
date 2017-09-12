@@ -49,7 +49,7 @@ library
                      , lens
                      , random
                      , scientific
-                     , swagger2
+                     , swagger2 >= 2.1.5 && < 3
                      , syb
                      , text
                      , unordered-containers
@@ -70,7 +70,7 @@ executable swagger-test
                      , optparse-applicative
                      , random
                      , swagger-test
-                     , swagger2
+                     , swagger2 >= 2.1.5 && < 3
                      , text
   default-language:    Haskell2010
 
