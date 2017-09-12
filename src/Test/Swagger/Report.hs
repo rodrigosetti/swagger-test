@@ -120,8 +120,11 @@ report model reps =
         h2 "Operations"
         ul ! class_ "operations-menu" $
           forM_ reportGroups $ \case
-              (TestReport { reportOperation=Operation { _operationOperationId=Just opid } }:_) ->
-                li $ a ! href (toValue $ "#" <> opid) $ toHtml opid
+              gr@(TestReport { reportOperation=Operation { _operationOperationId=Just opid } }:_) ->
+                do let hasFailure = any isFailure gr
+                   li $ a ! href (toValue $ "#" <> opid)
+                          ! class_ (if hasFailure then "failure" else "success")
+                          $ toHtml opid
               _ -> pure ()
         forM_ reportGroups $ \case
             [] -> error "this shouldn't happen"
@@ -209,6 +212,12 @@ reportHeader model inner =
                     \dd {\
                     \  margin-left: 17%;\
                     \  margin-bottom: 1em;\
+                    \}\
+                    \a.success {\
+                    \  color: green;\
+                    \}\
+                    \a.failure {\
+                    \  color: red;\
                     \}"
        body $ do
            h1 schemaTitle
