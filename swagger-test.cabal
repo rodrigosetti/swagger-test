@@ -1,5 +1,5 @@
 name:                swagger-test
-version:             0.2.6
+version:             0.2.7
 synopsis:            Testing of Swagger APIs
 description:         This package provides a library and executable tool
                      that supports testing APIs specified with Swagger. It

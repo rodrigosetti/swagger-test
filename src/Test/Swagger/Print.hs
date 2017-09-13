@@ -52,9 +52,9 @@ printRequest FormatHttp (HttpRequest _ method path query headers body) =
        Nothing -> mempty
 printRequest FormatCurl (HttpRequest host method path query headers body) =
      fromText "curl -i"
-  <> if method /= methodGet
-      then fromUtf8Bytestring $ " -X " <> method
-      else mempty
+  <> (if method /= methodGet
+        then fromUtf8Bytestring $ " -X " <> method
+        else mempty)
   <> fromText " '"
   <> fromText (escapeS host')
   <> fromText (escape path)

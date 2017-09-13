@@ -129,7 +129,7 @@ requestGenerator ns mopid =
     let randomHeaders' = catMaybes
                  $   (\h -> (fst h,) <$> snd h)
                  <$> ((mk . fst &&& snd) <$> randomHeaders)
-                 <>  [("Host", (T.pack . (^. name)) <$> mHost)]
+                 <>  [("Host", (T.pack . hostNameAndPort) <$> mHost)]
                  <>  [("Content-Type", fst <$> maybeMimeAndBody)]
                  <>  [("User-Agent", Just $ "swagger-test/" <> T.pack (showVersion version))]
 
@@ -149,7 +149,10 @@ requestGenerator ns mopid =
   schemeForPort _ = Http
 
   buildHost :: Scheme -> Host -> String
-  buildHost sc h = schemeToHttpPrefix sc <> (h ^. name) <> maybe "" ((':':) . show) (h ^. port)
+  buildHost sc h = schemeToHttpPrefix sc <> hostNameAndPort h
+
+  hostNameAndPort :: Host -> String
+  hostNameAndPort h = (h ^. name) <> maybe "" ((':':) . show) (h ^. port)
 
   schemeToHttpPrefix Http  = "http://"
   schemeToHttpPrefix Https = "https://"
