@@ -10,7 +10,6 @@ import qualified Data.ByteString        as BS
 import qualified Data.ByteString.Lazy   as LBS
 import           Data.CaseInsensitive
 import           Data.Maybe
-import           Data.Monoid
 import qualified Data.Text              as T
 import           Data.Text.Encoding
 import           Data.Text.Lazy.Builder

@@ -32,7 +32,7 @@ library
                      , Test.Swagger.Types
                      , Test.Swagger.Validate
   build-depends:       base >= 4.7 && < 5
-                     , QuickCheck == 2.10.*
+                     , QuickCheck
                      , aeson
                      , async
                      , attoparsec

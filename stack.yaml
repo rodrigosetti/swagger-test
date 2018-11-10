@@ -1,8 +1,6 @@
-resolver: lts-9.4
+resolver: lts-12.17
 packages:
  - .
-extra-deps:
- - QuickCheck-2.10.0.1
 
 flags: {}
 

@@ -25,7 +25,6 @@ import           Data.Aeson                    as J
 import qualified Data.ByteString.Lazy          as LBS
 import           Data.List
 import           Data.Maybe
-import           Data.Monoid
 import qualified Data.Set                      as S
 import           Data.Swagger                  as W
 import qualified Data.Text                     as T
