@@ -303,7 +303,7 @@ genJSON s@Schema { _schemaParamSchema = ParamSchema { _paramSchemaType = Swagger
      reqPropsV <- mapM (\i -> (fst i,) <$> genJSON (snd i)) reqProps
      optPropsV <- mapM (\i -> (fst i,) <$> genJSON (snd i)) decidedOptProps
      addPropsV <- case s ^. additionalProperties of
-                    Just (Inline s') -> replicateM (nProps - (nOptProps + length reqProps)) $
+                    Just (AdditionalPropertiesSchema (Inline s')) -> replicateM (nProps - (nOptProps + length reqProps)) $
                                             do k <- genNonemptyText
                                                (k,) <$> genJSON s'
                     _ -> pure []
