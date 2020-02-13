@@ -38,6 +38,7 @@ import           Network.HTTP.Types
 import           System.FilePath.Posix      ((</>))
 import           Test.QuickCheck            hiding (Fixed)
 import           Test.QuickCheck.Gen        (unGen)
+import           Test.QuickCheck.StringRandom (matchRegexp)
 import           Test.QuickCheck.Random
 import           Test.Swagger.Types
 import           Paths_swagger_test      (version)
@@ -209,9 +210,9 @@ paramIsRequired p = fromMaybe False $ p ^. required
 
 -- |Generator for a parameter, which is used on the "path", "query", "form", or
 -- "header".
--- TODO: respect "pattern" generation
 paramGen :: ParamSchema a -> ValueRestrictions -> Gen Value
 paramGen ParamSchema { _paramSchemaEnum=Just values} (ValueRestrictions allowEmpty _) = elements $ values <> [Null | allowEmpty]
+paramGen ParamSchema { _paramSchemaType=SwaggerString, _paramSchemaPattern=Just pat } _ = toJSON <$> matchRegexp pat
 paramGen ParamSchema { _paramSchemaType=SwaggerString } res = genJString res
 
 -- TODO: respect "multiple of" number generation
