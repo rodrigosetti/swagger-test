@@ -43,6 +43,8 @@ import           Test.Swagger.Types
 import           Paths_swagger_test      (version)
 import           Data.Version            (showVersion)
 
+-- Restrictions on randomly generated value
+data ValueRestrictions = ValueRestrictions { _allowEmpty :: Bool, _allowNewline :: Bool }
 
 -- |Given a swagger.json schema, produce a Request that complies with the schema.
 --  The return type is a random Request (in the IO monad because it's random).
@@ -100,21 +102,21 @@ requestGenerator ns mopid =
     let finalParams = requiredParams <> selectedOptionalParams
 
     -- pick params for path
-    let pathParams = catMaybes (paramSchemaAndAllowEmpty ParamPath <$> finalParams)
+    let pathParams = catMaybes (paramSchemaAndValueRestrictions ParamPath <$> finalParams)
     path' <- applyPathTemplating pathParams $ T.pack path
 
     -- pick params for query string
-    let queryParams = catMaybes $ paramSchemaAndAllowEmpty ParamQuery <$> finalParams
+    let queryParams = catMaybes $ paramSchemaAndValueRestrictions ParamQuery <$> finalParams
 
     queryStr <- genQuery queryParams
 
     -- pick params for header
-    let headerParams = catMaybes (paramSchemaAndAllowEmpty ParamHeader <$> finalParams)
+    let headerParams = catMaybes (paramSchemaAndValueRestrictions ParamHeader <$> finalParams)
 
     randomHeaders <- genQuery headerParams
 
     -- pick params for form data
-    let formDataParams = catMaybes $ paramSchemaAndAllowEmpty ParamFormData <$> finalParams
+    let formDataParams = catMaybes $ paramSchemaAndValueRestrictions ParamFormData <$> finalParams
 
     maybeMimeAndBody <-
       if null formDataParams
@@ -163,18 +165,18 @@ requestGenerator ns mopid =
   bodySchemaParam Param { _paramSchema = ParamBody r} = Just r
   bodySchemaParam _                                   = Nothing
 
-  applyPathTemplating :: [(T.Text, ParamSchema k, Bool)] -> T.Text -> Gen T.Text
+  applyPathTemplating :: [(T.Text, ParamSchema k, ValueRestrictions)] -> T.Text -> Gen T.Text
   applyPathTemplating [] p                 = pure p
-  applyPathTemplating ((key, sc, ae):ts) p =
+  applyPathTemplating ((key, sc, res):ts) p =
     do let f = sc ^. format
-       v <- (mconcat . jsonToText f CollectionSSV) <$> paramGen sc ae
+       v <- (mconcat . jsonToText f CollectionSSV) <$> paramGen sc res
        applyPathTemplating ts $ T.replace ("{" <> key <> "}") (urlEncodeText v) p
 
-  genQuery :: [(T.Text, ParamSchema k, Bool)] -> Gen QueryText
+  genQuery :: [(T.Text, ParamSchema k, ValueRestrictions)] -> Gen QueryText
   genQuery []                  = pure []
-  genQuery ((key, sc, ae):ts) =
+  genQuery ((key, sc, res):ts) =
     do let f = sc ^. format
-       v <- jsonToText f CollectionCSV <$> paramGen sc ae
+       v <- jsonToText f CollectionCSV <$> paramGen sc res
        let this = (\x -> (key, if T.null x then Nothing else Just x)) <$> v
        rest <- genQuery ts
        pure $ this <> rest
@@ -182,14 +184,18 @@ requestGenerator ns mopid =
   urlEncodeText :: T.Text -> T.Text
   urlEncodeText = decodeUtf8 . urlEncode False . encodeUtf8
 
-  paramSchemaAndAllowEmpty :: ParamLocation -> Param -> Maybe (T.Text, ParamSchema 'SwaggerKindParamOtherSchema, Bool)
-  paramSchemaAndAllowEmpty loc Param { _paramName = n, _paramSchema = ParamOther pos@ParamOtherSchema {} }
+  paramSchemaAndValueRestrictions :: ParamLocation -> Param -> Maybe (T.Text, ParamSchema 'SwaggerKindParamOtherSchema, ValueRestrictions)
+  paramSchemaAndValueRestrictions loc Param { _paramName = n, _paramSchema = ParamOther pos@ParamOtherSchema {} }
       | loc == pos ^. in_ = Just ( n
                                  , pos ^. paramSchema
-                                 , (loc == ParamQuery || loc == ParamFormData)
-                                   && fromMaybe False (pos ^. allowEmptyValue))
+                                 , ValueRestrictions
+                                     { _allowEmpty = (loc == ParamQuery || loc == ParamFormData)
+                                                    && fromMaybe False (pos ^. allowEmptyValue)
+                                     , _allowNewline = loc /= ParamHeader
+                                     }
+                                 )
       | otherwise = Nothing
-  paramSchemaAndAllowEmpty _ Param { _paramSchema = ParamBody _ } = Nothing
+  paramSchemaAndValueRestrictions _ Param { _paramSchema = ParamBody _ } = Nothing
 
 -- |Useful combinator for (Gen a) family: chose one of the values or
 -- Nothing if the list is empty. (i.e. safe "elements")
@@ -204,31 +210,31 @@ paramIsRequired p = fromMaybe False $ p ^. required
 -- |Generator for a parameter, which is used on the "path", "query", "form", or
 -- "header".
 -- TODO: respect "pattern" generation
-paramGen :: ParamSchema a -> Bool -> Gen Value
-paramGen ParamSchema { _paramSchemaEnum=Just values} allowEmpty = elements $ values <> [Null | allowEmpty]
-paramGen ParamSchema { _paramSchemaType=SwaggerString } allowEmpty = genJString allowEmpty
+paramGen :: ParamSchema a -> ValueRestrictions -> Gen Value
+paramGen ParamSchema { _paramSchemaEnum=Just values} (ValueRestrictions allowEmpty _) = elements $ values <> [Null | allowEmpty]
+paramGen ParamSchema { _paramSchemaType=SwaggerString } res = genJString res
 
 -- TODO: respect "multiple of" number generation
-paramGen ps@ParamSchema { _paramSchemaType=SwaggerNumber } allowEmpty =
+paramGen ps@ParamSchema { _paramSchemaType=SwaggerNumber } (ValueRestrictions allowEmpty _) =
   do let n :: Gen Double
          min_ = fromMaybe (-1/0) $ toRealFloat <$> ps ^. minimum_
          max_ = fromMaybe (1/0) $ toRealFloat <$> ps ^. maximum_
          n = choose (min_, max_)
      frequency $ [(10, Number . fromFloatDigits <$> n)] <> [(1, pure Null) | allowEmpty]
-paramGen ps@ParamSchema { _paramSchemaType=SwaggerInteger } allowEmpty =
+paramGen ps@ParamSchema { _paramSchemaType=SwaggerInteger } (ValueRestrictions allowEmpty _) =
   do let n :: Gen Int
          min_ = fromMaybe (-1000) $ toBoundedInteger =<< ps ^. minimum_
          max_ = fromMaybe 1000 $ toBoundedInteger =<< ps ^. maximum_
          n = choose ( min_ + if fromMaybe False $ ps ^. exclusiveMinimum then 1 else 0
                      , max_ - if fromMaybe False $ ps ^. exclusiveMaximum then 1 else 0)
      frequency $ [(10, Number . fromInteger . toInteger <$> n)] <> [(1, pure Null) | allowEmpty]
-paramGen ParamSchema { _paramSchemaType=SwaggerBoolean } allowEmpty =
+paramGen ParamSchema { _paramSchemaType=SwaggerBoolean } (ValueRestrictions allowEmpty _) =
   elements $ [Bool True, Bool False] <> [Null | allowEmpty]
 
 -- TODO: respect generation of "unique items"
-paramGen ps@ParamSchema { _paramSchemaType=SwaggerArray, _paramSchemaFormat=fmt } allowEmpty =
+paramGen ps@ParamSchema { _paramSchemaType=SwaggerArray, _paramSchemaFormat=fmt } res =
   do  siz <- toInteger <$> getSize
-      len <- fromIntegral <$> choose ( fromMaybe (if allowEmpty then 0 else 1) $ ps ^. minLength
+      len <- fromIntegral <$> choose ( fromMaybe (if _allowEmpty res then 0 else 1) $ ps ^. minLength
                                       , fromMaybe siz $ ps ^. maxLength)
       case ps ^. items of
         Just (SwaggerItemsObject (Inline s)) ->
@@ -236,13 +242,13 @@ paramGen ps@ParamSchema { _paramSchemaType=SwaggerArray, _paramSchemaFormat=fmt 
         Just (SwaggerItemsArray rs) ->
           toJSON <$> mapM genJSON (catMaybes (refToMaybe <$> rs))
         Just (SwaggerItemsPrimitive cfmt ps') ->
-           do x <- toJSON <$> replicateM len (paramGen ps' allowEmpty)
+           do x <- toJSON <$> replicateM len (paramGen ps' res)
               pure $ maybe x (toJSON . flip (jsonToText fmt) x) cfmt
         _ ->
-          toJSON <$> replicateM len (genJString allowEmpty)
+          toJSON <$> replicateM len (genJString res)
 
 -- NOTE: we don't really support files
-paramGen ParamSchema { _paramSchemaType=SwaggerFile } allowEmpty = genJString allowEmpty
+paramGen ParamSchema { _paramSchemaType=SwaggerFile } res = genJString res
 paramGen ParamSchema { _paramSchemaType=SwaggerNull } _ = pure Null
 
 -- TODO: what to do here?
@@ -310,16 +316,21 @@ genJSON s@Schema { _schemaParamSchema = ParamSchema { _paramSchemaType = Swagger
 
      pure $ Object $ HM.fromList $ reqPropsV <> optPropsV <> addPropsV
 
-genJSON Schema { _schemaParamSchema = ps } = paramGen ps True
+genJSON Schema { _schemaParamSchema = ps } = paramGen ps (ValueRestrictions True True)
 
 genNonemptyText :: Gen T.Text
-genNonemptyText = genText False
+genNonemptyText = genText (ValueRestrictions False True)
 
-genText :: Bool -> Gen T.Text
-genText allowEmpty =
-  do c <- arbitraryASCIIChar
-     s <- getASCIIString <$> arbitrary
+genText :: ValueRestrictions -> Gen T.Text
+genText (ValueRestrictions allowEmpty allowNewline) =
+  do c <- arbitraryChar
+     s <- arbitraryString
      pure $ T.pack $ [c | not allowEmpty] <> s
+ where
+  arbitraryChar
+    | allowNewline = arbitraryASCIIChar
+    | otherwise = arbitraryASCIIChar `suchThat` (not . (=='\n'))
+  arbitraryString = listOf arbitraryChar
 
-genJString :: Bool -> Gen Value
-genJString allowEmpty = toJSON <$> genText allowEmpty
+genJString :: ValueRestrictions -> Gen Value
+genJString res = toJSON <$> genText res
