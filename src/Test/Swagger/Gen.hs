@@ -218,8 +218,8 @@ paramGen ParamSchema { _paramSchemaType=SwaggerString } res = genJString res
 -- TODO: respect "multiple of" number generation
 paramGen ps@ParamSchema { _paramSchemaType=SwaggerNumber } (ValueRestrictions allowEmpty _) =
   do let n :: Gen Double
-         min_ = fromMaybe (-1/0) $ toRealFloat <$> ps ^. minimum_
-         max_ = fromMaybe (1/0) $ toRealFloat <$> ps ^. maximum_
+         min_ = maybe (-1/0) toRealFloat <$> ps ^. minimum_
+         max_ = maybe (1/0) toRealFloat <$> ps ^. maximum_
          n = choose (min_, max_)
      frequency $ [(10, Number . fromFloatDigits <$> n)] <> [(1, pure Null) | allowEmpty]
 paramGen ps@ParamSchema { _paramSchemaType=SwaggerInteger } (ValueRestrictions allowEmpty _) =
@@ -330,7 +330,7 @@ genText (ValueRestrictions allowEmpty allowNewline) =
  where
   arbitraryChar
     | allowNewline = arbitraryASCIIChar
-    | otherwise = arbitraryASCIIChar `suchThat` (not . (=='\n'))
+    | otherwise = arbitraryASCIIChar `suchThat` (/= '\n')
   arbitraryString = listOf arbitraryChar
 
 genJString :: ValueRestrictions -> Gen Value
