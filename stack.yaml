@@ -1,6 +1,9 @@
 resolver: lts-13.13
 packages:
  - .
+extra-deps:
+ - quickcheck-string-random-0.1.3.0@sha256:5bd441bba820f424d56367e570b29b72eb62f69517f3d17d35fc28caf208dc6e
+ - string-random-0.1.2.0@sha256:db4f801dec1ec72cba7d662b9774da60ff54de6d05478e94478d6d730dc5034f
 
 flags: {}
 

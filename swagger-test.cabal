@@ -48,6 +48,7 @@ library
                      , http-types
                      , insert-ordered-containers
                      , lens
+                     , quickcheck-string-random
                      , random
                      , scientific
                      , swagger2 >= 2.1.5 && < 3
