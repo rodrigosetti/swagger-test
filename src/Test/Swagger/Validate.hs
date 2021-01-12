@@ -21,7 +21,7 @@ module Test.Swagger.Validate ( parseResponse
 import           Control.Applicative
 import           Control.Lens
 import           Control.Monad
-import           Data.Aeson                              hiding (Result)
+import           Data.Aeson                              hiding (Result, (<?>))
 import           Data.Attoparsec.ByteString              hiding (Result,
                                                           eitherResult, parse)
 import qualified Data.Attoparsec.ByteString.Char8        as AC
@@ -34,7 +34,6 @@ import           Data.Generics
 import qualified Data.HashMap.Strict.InsOrd              as M
 import           Data.List
 import           Data.Maybe
-import           Data.Monoid                             ((<>))
 import           Data.Swagger
 import           Data.Swagger.Internal.Schema.Validation
 import qualified Data.Text                               as T
@@ -75,7 +74,7 @@ validateResponseWithOperation res ns operation =
            sr <- maybe (Left $ "unspecified status code: " <> show code) pure (msr >>= refToMaybe)
 
            -- validate headers
-           forM_ (M.toList $ sr ^. headers) $ uncurry $ \k h ->
+           forM_ (M.toList $ sr ^. headers) $ \(k, h) ->
                 do hv <- maybe (Left $ "expected header: " <> T.unpack k) pure
                               $ lookup (mk k) $ responseHeaders res
                    let jhv = fromMaybe (toJSON hv) $ decodeStrict $ encodeUtf8 hv

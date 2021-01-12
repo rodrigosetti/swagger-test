@@ -16,7 +16,6 @@ import           Control.Monad
 import           Data.Aeson
 import qualified Data.ByteString.Lazy     as LBS
 import           Data.List
-import           Data.Semigroup           ((<>))
 import           Data.Swagger             hiding (Format, info, version)
 import qualified Data.Text                as T
 import qualified Data.Text.IO             as TIO
@@ -219,6 +218,6 @@ main = do Opts cmd <- customExecParser
         do seed <- maybe (abs <$> randomIO) pure mseed
            let (op, req) = generateRequest seed size model mopid
            when renderInfo $
-              TIO.putStrLn $ "# seed=" <> T.pack (show seed) <> maybe "" (\i -> " id=" <> i) (op ^. operationId)
+              TIO.putStrLn $ "# seed=" <> T.pack (show seed) <> maybe "" (" id=" <>) (op ^. operationId)
            LTIO.putStrLn $ toLazyText $ printRequest reqFmt req
            pure (op, req)

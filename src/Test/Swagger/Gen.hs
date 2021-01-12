@@ -27,7 +27,6 @@ import qualified Data.HashMap.Lazy          as HM
 import qualified Data.HashMap.Strict.InsOrd as M
 import           Data.List                  (partition)
 import           Data.Maybe
-import           Data.Monoid                ((<>))
 import           Data.Scientific
 import           Data.Swagger hiding (version)
 import           Data.Swagger.Internal      (SwaggerKind (..))
@@ -85,7 +84,7 @@ requestGenerator ns mopid =
                          <$> availableOps
                  found = lookup opid opId2Op
                  allIds = T.intercalate ", " $ fst <$> opId2Op
-             maybe (fail $ "undefined operation id: \""
+             maybe (error $ "undefined operation id: \""
                          <> T.unpack opid
                          <> "\". Available ids: "
                          <> T.unpack allIds)
@@ -122,9 +121,9 @@ requestGenerator ns mopid =
     maybeMimeAndBody <-
       if null formDataParams
        then do -- pick a param for body
-               bodySchema <- maybeElements $ catMaybes $ (refToMaybe =<<) . bodySchemaParam <$> finalParams
+               bodySchema <- maybeElements $ catMaybes $ (refToMaybe <=< bodySchemaParam) <$> finalParams
                randomJsonBody <- maybe (pure Nothing) (Just <$>) $ genJSON <$> bodySchema
-               pure $ (("application/json",) . encode) <$> randomJsonBody
+               pure $ ("application/json",) . encode <$> randomJsonBody
        else do formDataQuery <- genQuery formDataParams
                pure $ Just ( "application/x-www-form-urlencoded"
                            , toLazyByteString $ renderQueryText False formDataQuery)
@@ -132,7 +131,7 @@ requestGenerator ns mopid =
     let randomHeaders' = catMaybes
                  $   (\h -> (fst h,) <$> snd h)
                  <$> ((mk . fst &&& snd) <$> randomHeaders)
-                 <>  [("Host", (T.pack . hostNameAndPort) <$> mHost)]
+                 <>  [("Host", T.pack . hostNameAndPort <$> mHost)]
                  <>  [("Content-Type", fst <$> maybeMimeAndBody)]
                  <>  [("User-Agent", Just $ "swagger-test/" <> T.pack (showVersion version))]
 
@@ -170,7 +169,7 @@ requestGenerator ns mopid =
   applyPathTemplating [] p                 = pure p
   applyPathTemplating ((key, sc, res):ts) p =
     do let f = sc ^. format
-       v <- (mconcat . jsonToText f CollectionSSV) <$> paramGen sc res
+       v <- mconcat . jsonToText f CollectionSSV <$> paramGen sc res
        applyPathTemplating ts $ T.replace ("{" <> key <> "}") (urlEncodeText v) p
 
   genQuery :: [(T.Text, ParamSchema k, ValueRestrictions)] -> Gen QueryText
@@ -202,7 +201,7 @@ requestGenerator ns mopid =
 -- Nothing if the list is empty. (i.e. safe "elements")
 maybeElements :: [a] -> Gen (Maybe a)
 maybeElements [] = pure Nothing
-maybeElements xs = (Just . (xs !!)) <$> choose (0, length xs - 1)
+maybeElements xs = Just . (xs !!) <$> choose (0, length xs - 1)
 
 paramIsRequired :: Param -> Bool
 paramIsRequired Param { _paramSchema = ParamOther ParamOtherSchema { _paramOtherSchemaIn = ParamPath}} = True
@@ -212,28 +211,28 @@ paramIsRequired p = fromMaybe False $ p ^. required
 -- "header".
 paramGen :: ParamSchema a -> ValueRestrictions -> Gen Value
 paramGen ParamSchema { _paramSchemaEnum=Just values} (ValueRestrictions allowEmpty _) = elements $ values <> [Null | allowEmpty]
-paramGen ParamSchema { _paramSchemaType=SwaggerString, _paramSchemaPattern=Just pat } _ = toJSON <$> matchRegexp pat
-paramGen ParamSchema { _paramSchemaType=SwaggerString } res = genJString res
+paramGen ParamSchema { _paramSchemaType=Just SwaggerString, _paramSchemaPattern=Just pat } _ = toJSON <$> matchRegexp pat
+paramGen ParamSchema { _paramSchemaType=Just SwaggerString } res = genJString res
 
 -- TODO: respect "multiple of" number generation
-paramGen ps@ParamSchema { _paramSchemaType=SwaggerNumber } (ValueRestrictions allowEmpty _) =
+paramGen ps@ParamSchema { _paramSchemaType=Just SwaggerNumber } (ValueRestrictions allowEmpty _) =
   do let n :: Gen Double
-         min_ = maybe (-1/0) toRealFloat <$> ps ^. minimum_
-         max_ = maybe (1/0) toRealFloat <$> ps ^. maximum_
+         min_ = maybe (-1/0) toRealFloat $ ps ^. minimum_
+         max_ = maybe (1/0) toRealFloat $ ps ^. maximum_
          n = choose (min_, max_)
      frequency $ [(10, Number . fromFloatDigits <$> n)] <> [(1, pure Null) | allowEmpty]
-paramGen ps@ParamSchema { _paramSchemaType=SwaggerInteger } (ValueRestrictions allowEmpty _) =
+paramGen ps@ParamSchema { _paramSchemaType=Just SwaggerInteger } (ValueRestrictions allowEmpty _) =
   do let n :: Gen Int
          min_ = fromMaybe (-1000) $ toBoundedInteger =<< ps ^. minimum_
          max_ = fromMaybe 1000 $ toBoundedInteger =<< ps ^. maximum_
          n = choose ( min_ + if fromMaybe False $ ps ^. exclusiveMinimum then 1 else 0
                      , max_ - if fromMaybe False $ ps ^. exclusiveMaximum then 1 else 0)
      frequency $ [(10, Number . fromInteger . toInteger <$> n)] <> [(1, pure Null) | allowEmpty]
-paramGen ParamSchema { _paramSchemaType=SwaggerBoolean } (ValueRestrictions allowEmpty _) =
+paramGen ParamSchema { _paramSchemaType=Just SwaggerBoolean } (ValueRestrictions allowEmpty _) =
   elements $ [Bool True, Bool False] <> [Null | allowEmpty]
 
 -- TODO: respect generation of "unique items"
-paramGen ps@ParamSchema { _paramSchemaType=SwaggerArray, _paramSchemaFormat=fmt } res =
+paramGen ps@ParamSchema { _paramSchemaType=Just SwaggerArray, _paramSchemaFormat=fmt } res =
   do  siz <- toInteger <$> getSize
       len <- fromIntegral <$> choose ( fromMaybe (if _allowEmpty res then 0 else 1) $ ps ^. minLength
                                       , fromMaybe siz $ ps ^. maxLength)
@@ -249,11 +248,12 @@ paramGen ps@ParamSchema { _paramSchemaType=SwaggerArray, _paramSchemaFormat=fmt 
           toJSON <$> replicateM len (genJString res)
 
 -- NOTE: we don't really support files
-paramGen ParamSchema { _paramSchemaType=SwaggerFile } res = genJString res
-paramGen ParamSchema { _paramSchemaType=SwaggerNull } _ = pure Null
+paramGen ParamSchema { _paramSchemaType=Just SwaggerFile } res = genJString res
+paramGen ParamSchema { _paramSchemaType=Just SwaggerNull } _ = pure Null
+paramGen ParamSchema { _paramSchemaType=Nothing } _ = pure Null
 
 -- TODO: what to do here?
-paramGen ParamSchema { _paramSchemaType=SwaggerObject } _ = undefined
+paramGen ParamSchema { _paramSchemaType=Just SwaggerObject } _ = undefined
 
 jsonToText :: Maybe Format -> CollectionFormat t -> Value -> [T.Text]
 jsonToText _ _ (String t) = [t]
@@ -298,7 +298,7 @@ genJSON Schema { _schemaAllOf = Just ss } =
   let ss' = catMaybes $ refToMaybe <$> ss
   in foldl merge Null <$> mapM genJSON ss'
 
-genJSON s@Schema { _schemaParamSchema = ParamSchema { _paramSchemaType = SwaggerObject } } =
+genJSON s@Schema { _schemaParamSchema = ParamSchema { _paramSchemaType = Just SwaggerObject } } =
   do let props = catMaybes $ (\i -> (fst i,) <$> refToMaybe (snd i)) <$> M.toList (s ^. properties)
          (reqProps, optProps) = partition (\i -> fst i `elem` s ^. required) props
      siz <- toInteger <$> getSize
