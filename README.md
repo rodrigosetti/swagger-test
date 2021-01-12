@@ -13,29 +13,29 @@ proposition:
 Which translates to:
 
 > For all valid requests that can be derived from my Swagger schema, the
-> API response obtained from executing that request is valid according to the
-> same Swagger schema.
+> API response obtained from a service that implements the schema is valid.
 
-The tool exposes several ways to configure get value from parts of it, for
+The tool exposes several ways to derive value from the Swagger schema, for
 example, you may be interested in getting just a random valid request from the
 schema (use the `generate` command), or validating if a given response (from a
 particular operation) is valid (use the `validate` command), or, run one sample
-instance of the full proposition, which picks a random request and validate it's
+instance of the full proposition, which picks a random request and validate its
 resulting response (use the `request` command).
 
-The generator random request values are reproducible by re-using the same _seed_
+The random requests generator is deterministic by given the same _seed_
 value, or one can focus on a particular operation by specifying the operation
 id.
 
 The tool also simplifies integration with other systems by allowing to configure
-output formats as standard HTTP message, JSON, or curl. Additionally, there
-are Haskell modules exposed as a library if one wants to build on top of it.
+output formats as standard HTTP message, JSON, or [curl](https://curl.se).
+Additionally, there are Haskell modules exposed as a library if one wants to
+build on top of it.
 
 ## Command Line Interface
 
-*swagger-test* supports three commands:
+*swagger-test* supports four commands:
 
- * `generate` - generates a new random valid request from Swagger schema.
+ * `generate` - generates a new random valid request from the Swagger schema.
  * `validate` - validate a response to a given operation id, according to the
    schema.
  * `request` - generate and make the request, then validates the response
